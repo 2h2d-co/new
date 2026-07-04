@@ -42,7 +42,6 @@ type SystemInfo = {
   git: Record<string, string>;
   github: Record<string, string>;
   npm: Record<string, string>;
-  pnpm: Record<string, string>;
   config: UserConfig;
   defaults: Record<string, unknown>;
 };
@@ -165,7 +164,6 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
   const git: Record<string, string> = {};
   const github: Record<string, string> = {};
   const npm: Record<string, string> = {};
-  const pnpm: Record<string, string> = {};
 
   assignIfPresent(git, "name", await commandOutput("git", ["config", "user.name"]));
   assignIfPresent(git, "email", await commandOutput("git", ["config", "user.email"]));
@@ -184,21 +182,6 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
     "authorUrl",
     await commandOutput("npm", ["config", "get", "init-author-url"]),
   );
-  assignIfPresent(
-    pnpm,
-    "authorName",
-    await commandOutput("pnpm", ["config", "get", "init-author-name"]),
-  );
-  assignIfPresent(
-    pnpm,
-    "authorEmail",
-    await commandOutput("pnpm", ["config", "get", "init-author-email"]),
-  );
-  assignIfPresent(
-    pnpm,
-    "authorUrl",
-    await commandOutput("pnpm", ["config", "get", "init-author-url"]),
-  );
   assignIfPresent(github, "login", await commandOutput("gh", ["api", "user", "--jq", ".login"]));
   assignIfPresent(
     github,
@@ -215,19 +198,12 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
   const authorName = firstString(
     defaults.authorName,
     npm.authorName,
-    pnpm.authorName,
     git.name,
     github.name,
     github.login,
   );
-  const authorEmail = firstString(
-    defaults.authorEmail,
-    npm.authorEmail,
-    pnpm.authorEmail,
-    git.email,
-    github.email,
-  );
-  const authorUrl = firstString(defaults.authorUrl, npm.authorUrl, pnpm.authorUrl);
+  const authorEmail = firstString(defaults.authorEmail, npm.authorEmail, git.email, github.email);
+  const authorUrl = firstString(defaults.authorUrl, npm.authorUrl);
   const githubOwner = firstString(config.github?.owner, defaults.githubOwner, github.login);
   const licensee = firstString(defaults.licensee, authorName, githubOwner);
 
@@ -237,7 +213,7 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
   assignDefault(defaults, "githubOwner", githubOwner);
   assignDefault(defaults, "licensee", licensee);
 
-  return { git, github, npm, pnpm, config, defaults };
+  return { git, github, npm, config, defaults };
 }
 
 async function resolveTemplateSource(
