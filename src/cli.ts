@@ -205,13 +205,13 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
   const authorEmail = firstString(defaults.authorEmail, npm.authorEmail, git.email, github.email);
   const authorUrl = firstString(defaults.authorUrl, npm.authorUrl);
   const githubOwner = firstString(config.github?.owner, defaults.githubOwner, github.login);
-  const licensee = firstString(defaults.licensee, authorName, githubOwner);
+  const licensor = firstString(defaults.licensor, authorName, githubOwner);
 
   assignDefault(defaults, "authorName", authorName);
   assignDefault(defaults, "authorEmail", authorEmail);
   assignDefault(defaults, "authorUrl", authorUrl);
   assignDefault(defaults, "githubOwner", githubOwner);
-  assignDefault(defaults, "licensee", licensee);
+  assignDefault(defaults, "licensor", licensor);
 
   return { git, github, npm, config, defaults };
 }

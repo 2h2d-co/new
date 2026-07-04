@@ -59,7 +59,7 @@ template_source = "2h2d-co/templates"
 authorName = "Kaan Ozdokmeci"
 authorEmail = "kaan@2h2d.co"
 authorUrl = "https://www.2h2d.co"
-licensee = "Kaan Ozdokmeci"
+licensor = "Kaan Ozdokmeci"
 
 [github]
 owner = "2h2d-co"
