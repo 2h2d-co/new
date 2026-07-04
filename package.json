@@ -1,0 +1,55 @@
+{
+  "name": "@2h2d/new",
+  "version": "0.0.1-alpha.0",
+  "description": "Template-based project initializer",
+  "homepage": "https://github.com/2h2d-co/new#readme",
+  "bugs": {
+    "url": "https://github.com/2h2d-co/new/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Kaan Ozdokmeci",
+    "email": "kaan@2h2d.co",
+    "url": "https://www.2h2d.co"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2h2d-co/new.git"
+  },
+  "bin": {
+    "new": "bin/new.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x bin/new.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --test-concurrency=1 test/*.test.ts",
+    "check": "npm run typecheck && npm test",
+    "pack:dry": "npm run build && npm pack --dry-run --allow-directory=all",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.0.1",
+    "eta": "^3.5.0",
+    "smol-toml": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "oxfmt": "^0.56.0",
+    "oxlint": "^1.71.0",
+    "oxlint-tsgolint": "^0.23.0",
+    "typescript": "^6"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tgz
+.DS_Store
+.env
+coverage/
+
+# Local agent/project notes
+DESIRES.md
+LEARNINGS.md
+MISTAKES.md
