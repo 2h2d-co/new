@@ -48,6 +48,8 @@ Template variables are passed as kebab-case flags:
 new ts-cli demo --description "Demo CLI" --author-name "Kaan"
 ```
 
+Variable defaults can use `{{ variable }}` interpolation and system defaults gathered from git, GitHub CLI, npm, pnpm, and the global config.
+
 ## Global config
 
 ```toml
