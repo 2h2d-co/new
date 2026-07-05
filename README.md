@@ -80,3 +80,43 @@ templates/
 ```
 
 `.eta` files are rendered with Eta and the `.eta` suffix is stripped. Other files are copied as-is. File and directory names, defaults, and command strings support `{{ variable }}` interpolation.
+
+## Local development
+
+```bash
+npm install
+npm run check
+npm run build
+npm run pack:dry
+npm run lint
+npm run fmt
+```
+
+## Packaging
+
+This package publishes the executable shim, generated JavaScript, and project files explicitly:
+
+- `bin/`
+- `dist/`
+- `README.md`
+- `CHANGELOG.md`
+- `LICENSE`
+
+Release flow:
+
+1. Create a release commit named `release: vX.Y.Z`.
+2. Tag that commit as `vX.Y.Z`.
+3. Push `main` and the tag to GitHub.
+4. The tag push triggers GitHub Actions to build and stage the package on npm via trusted publishing with npm provenance.
+5. Approve the staged package on npmjs.com, or with `npm stage approve <stage-id>`.
+
+The CI release workflow intentionally ignores prerelease tags such as `vX.Y.Z-alpha.N`; use the prerelease publish helper for those builds.
+
+Prerelease publish helper for non-latest builds:
+
+```bash
+npm run publish:prerelease
+npm run publish:prerelease -- --execute
+```
+
+`npm run publish:prerelease` runs `npm run check` and `npm run build` first, then defaults to an npm dry-run. Pass `--execute` to perform the real publish. The helper only supports prerelease versions, derives the npm dist-tag from the first prerelease identifier (`alpha` for `X.Y.Z-alpha.N`, `xyz` for `X.Y.Z-xyz.W`), refuses `latest`, and requires a clean worktree plus a pushed `v<version>` tag pointing at the current commit before a real publish.

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-*"
 
 permissions: {}
 
@@ -43,12 +44,12 @@ jobs:
       - name: Build and preview package
         run: npm run pack:dry
 
-      - name: Validate release and derive npm dist-tag
+      - name: Validate stable release
         id: release
         run: node ./scripts/ci-publish-checks.ts
 
       - name: Stage package on npm
-        run: npm stage publish --tag "$NPM_DIST_TAG" --allow-directory=all --provenance
+        run: npm stage publish --tag "$NPM_DIST_TAG" --access public --allow-directory=all --provenance
         env:
           NPM_CONFIG_ALLOW_DIRECTORY: all
           NPM_DIST_TAG: "${{ steps.release.outputs.npm_tag }}"
