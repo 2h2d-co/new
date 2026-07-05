@@ -18,5 +18,5 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src", "test"]
+  "include": ["src", "scripts", "test"]
 }
