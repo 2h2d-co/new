@@ -14,4 +14,5 @@
 
 ### Fixed
 
+- Improved the Ctrl+C prompt cancellation message.
 - Removed duplicate available-template output before the interactive template picker.

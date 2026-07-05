@@ -986,6 +986,12 @@ function printVersion(): void {
 }
 
 void main().catch((error: unknown) => {
+  if (error instanceof Error && error.name === "ExitPromptError") {
+    console.error("new: Cancelled by user (Ctrl+C).");
+    process.exitCode = 130;
+    return;
+  }
+
   const message = error instanceof Error ? error.message : String(error);
   console.error(`new: ${message}`);
   process.exitCode = 1;
