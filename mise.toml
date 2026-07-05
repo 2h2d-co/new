@@ -7,3 +7,9 @@ minimum_release_age = "7d"
 npm = "11.18.0"
 node = "22.23.1"
 
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[shell_alias]
+"new:local" = "node {{config_root}}/src/cli.ts"
+
