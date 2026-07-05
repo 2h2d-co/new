@@ -462,12 +462,6 @@ async function resolveTemplateId(
     throw new Error("Template id is required when --yes is used");
   }
 
-  console.log("Available templates:");
-  for (const template of templates) {
-    const suffix = template.description ? ` - ${template.description}` : "";
-    console.log(`  ${template.id}${suffix}`);
-  }
-
   return select({
     message: "Template",
     choices: templates.map((template) => ({

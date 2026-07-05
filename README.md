@@ -27,7 +27,7 @@ A local template source must contain `new.toml` or `new-cli.toml` at the root. I
 new [template] [project-name] [options]
 ```
 
-With no arguments, `new` lists available templates and prompts for the template and project name.
+With no arguments, `new` prompts for the template and project name.
 
 Common options:
 
