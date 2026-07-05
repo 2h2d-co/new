@@ -1,0 +1,9 @@
+[settings]
+lockfile = true
+locked = true
+minimum_release_age = "7d"
+
+[tools]
+npm = "11.18.0"
+node = "22.23.1"
+
