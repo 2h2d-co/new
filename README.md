@@ -120,9 +120,15 @@ Release flow:
 4. The tag push triggers GitHub Actions to build and stage the package on npm via trusted publishing with npm provenance.
 5. Approve the staged package on npmjs.com, or with `npm stage approve <stage-id>`.
 
-The CI release workflow intentionally ignores prerelease tags such as `vX.Y.Z-alpha.N`; use the prerelease publish helper for those builds.
+The CI release workflow intentionally ignores prerelease tags such as `vX.Y.Z-alpha.N`; use the local mise release task for those builds:
 
-Prerelease publish helper for non-latest builds:
+```bash
+mise run publish:prerelease v0.0.1-alpha.0
+```
+
+The task verifies npm authentication and refuses to continue if the exact package version already exists on npm. It is safe to rerun for the same version after a partial failure: it recognizes an already-updated package version, an existing `release: vX.Y.Z-alpha.N` commit, and existing local or remote tags. When needed, it updates `package.json` and `package-lock.json`, runs the prerelease npm dry-run, commits `release: vX.Y.Z-alpha.N`, tags that commit, atomically pushes the branch and tag, then runs the npm prerelease publish in execute mode. If unrelated worktree changes remain before push/publish, it stops so you can clean them up and rerun the same command. The task is a raw mise file task, so stdin/stdout/stderr are connected directly for npm's interactive publish verification.
+
+The lower-level npm prerelease helper is still available:
 
 ```bash
 npm run publish:prerelease

@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+#MISE description="Create, tag, push, and publish an npm prerelease"
+#MISE raw=true
+#USAGE arg "<release_tag>" help="Prerelease tag to create and publish, such as v0.0.1-alpha.0"
+set -euo pipefail
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: mise run publish:prerelease vX.Y.Z-alpha.N" >&2
+  exit 2
+fi
+
+release_tag="$1"
+if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]]; then
+  echo "Expected a prerelease tag like v0.0.1-alpha.0, got: $release_tag" >&2
+  exit 2
+fi
+
+package_version="${release_tag#v}"
+prerelease="${package_version#*-}"
+first_identifier="${prerelease%%.*}"
+first_identifier_lower="$(printf '%s' "$first_identifier" | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$first_identifier_lower" =~ ^[0-9]+$ ]]; then
+  echo "Prerelease version must start with a named identifier like alpha, beta, or rc: $release_tag" >&2
+  exit 2
+fi
+if [[ ! "$first_identifier_lower" =~ ^[a-z][a-z0-9-]*$ ]]; then
+  echo "The first prerelease identifier must produce a valid npm dist-tag, got: $first_identifier" >&2
+  exit 2
+fi
+if [ "$first_identifier_lower" = "latest" ]; then
+  echo "Refusing prerelease version that would publish with the latest npm dist-tag: $release_tag" >&2
+  exit 2
+fi
+
+read_package_json_string() {
+  local field="$1"
+  node -e '
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const value = pkg[process.argv[1]];
+if (typeof value !== "string" || value.length === 0) process.exit(1);
+console.log(value);
+' "$field"
+}
+
+read_stdin_package_version() {
+  node -e '
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync(0, "utf8"));
+const value = pkg.version;
+if (typeof value !== "string" || value.length === 0) process.exit(1);
+console.log(value);
+'
+}
+
+get_remote_tag_object() {
+  local remote_name="$1"
+  local tag_name="$2"
+  local output=""
+  output="$(git ls-remote --tags "$remote_name" "refs/tags/$tag_name")"
+  local object=""
+  local ref=""
+  while read -r object ref; do
+    if [ "$ref" = "refs/tags/$tag_name" ]; then
+      printf '%s\n' "$object"
+      return 0
+    fi
+  done <<< "$output"
+}
+
+assert_release_commit() {
+  local commit="$1"
+  local subject=""
+  subject="$(git log -1 --pretty=%s "$commit")"
+  if [ "$subject" != "release: $release_tag" ]; then
+    echo "Refusing to use commit $commit because its subject is '$subject', not 'release: $release_tag'." >&2
+    exit 1
+  fi
+
+  local version_at_commit=""
+  if ! version_at_commit="$(git show "$commit:package.json" | read_stdin_package_version)"; then
+    echo "Refusing to use commit $commit because package.json cannot be read from it." >&2
+    exit 1
+  fi
+  if [ "$version_at_commit" != "$package_version" ]; then
+    echo "Refusing to use commit $commit because package.json version is '$version_at_commit', not '$package_version'." >&2
+    exit 1
+  fi
+}
+
+package_name="$(read_package_json_string name)"
+package_spec="$package_name@$package_version"
+
+if ! npm_user="$(npm whoami 2>/dev/null)"; then
+  echo "Refusing to release because npm authentication is not configured. Run npm login first." >&2
+  exit 1
+fi
+echo "Verified npm authentication as $npm_user."
+
+npm_view_output=""
+if npm_view_output="$(npm view "$package_spec" version 2>&1)"; then
+  echo "Refusing to release because $package_spec already exists on npm." >&2
+  exit 1
+fi
+if ! grep -q "E404" <<< "$npm_view_output"; then
+  echo "Refusing to release because npm could not confirm that $package_spec is unpublished:" >&2
+  echo "$npm_view_output" >&2
+  exit 1
+fi
+echo "Verified $package_spec is not published on npm."
+
+if ! inside_work_tree="$(git rev-parse --is-inside-work-tree 2>/dev/null)" || [ "$inside_work_tree" != "true" ]; then
+  echo "Refusing to release outside of a Git work tree." >&2
+  exit 1
+fi
+
+branch="$(git branch --show-current)"
+if [ -z "$branch" ]; then
+  echo "Refusing to release from a detached HEAD." >&2
+  exit 1
+fi
+
+if ! remote="$(git config "branch.$branch.remote")" || [ -z "$remote" ]; then
+  echo "Refusing to release because branch '$branch' has no configured upstream remote." >&2
+  exit 1
+fi
+if ! upstream_ref="$(git rev-parse --symbolic-full-name '@{u}' 2>/dev/null)"; then
+  echo "Refusing to release because branch '$branch' has no upstream branch." >&2
+  exit 1
+fi
+
+remote_ref_prefix="refs/remotes/$remote/"
+if [[ "$upstream_ref" != "$remote_ref_prefix"* ]]; then
+  echo "Refusing to release because upstream '$upstream_ref' is not on remote '$remote'." >&2
+  exit 1
+fi
+upstream_branch="${upstream_ref#"$remote_ref_prefix"}"
+
+git fetch --quiet "$remote"
+if ! git merge-base --is-ancestor "$upstream_ref" HEAD; then
+  echo "Refusing to release because '$branch' is behind or diverged from '$upstream_ref'." >&2
+  exit 1
+fi
+
+remote_tag_object="$(get_remote_tag_object "$remote" "$release_tag")"
+if [ -n "$remote_tag_object" ] && ! git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
+  git fetch --quiet "$remote" "refs/tags/$release_tag:refs/tags/$release_tag"
+fi
+
+head_commit="$(git rev-parse HEAD)"
+release_commit=""
+if git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
+  release_commit="$(git rev-list -n 1 "$release_tag")"
+  assert_release_commit "$release_commit"
+
+  local_tag_object="$(git rev-parse "refs/tags/$release_tag")"
+  if [ -n "$remote_tag_object" ] && [ "$remote_tag_object" != "$local_tag_object" ]; then
+    echo "Refusing to release because remote tag '$release_tag' on '$remote' does not match the local tag." >&2
+    exit 1
+  fi
+
+  if [ "$release_commit" != "$head_commit" ]; then
+    echo "Refusing to publish because tag '$release_tag' points at $release_commit, but HEAD is $head_commit." >&2
+    echo "Check out the release commit before retrying." >&2
+    exit 1
+  fi
+else
+  subject="$(git log -1 --pretty=%s HEAD)"
+  current_head_version="$(git show HEAD:package.json | read_stdin_package_version)"
+  if [ "$subject" = "release: $release_tag" ] && [ "$current_head_version" = "$package_version" ]; then
+    release_commit="$head_commit"
+    echo "Reusing existing release commit $release_commit."
+  else
+    npm version "$package_version" --no-git-tag-version --allow-same-version
+    npm run publish:prerelease
+    git commit --only --allow-empty -m "release: $release_tag" -- package.json package-lock.json
+    release_commit="$(git rev-parse HEAD)"
+  fi
+
+  assert_release_commit "$release_commit"
+  git tag "$release_tag" "$release_commit"
+fi
+
+remaining_changes="$(git status --porcelain)"
+if [ -n "$remaining_changes" ]; then
+  echo "Release commit and tag are ready, but refusing to push or publish with uncommitted changes:" >&2
+  echo "$remaining_changes" >&2
+  echo "Clean these changes, then rerun: mise run publish:prerelease $release_tag" >&2
+  exit 1
+fi
+
+git push --atomic "$remote" "HEAD:refs/heads/$upstream_branch" "refs/tags/$release_tag"
+npm run publish:prerelease -- --execute
