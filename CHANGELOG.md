@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.0.1] - 2026-07-06
+
 ### Added
 
 - Added project scaffolding from local and GitHub-hosted template collections.
