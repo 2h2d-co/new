@@ -5,6 +5,7 @@ dist/
 .env
 coverage/
 .new-playground/
+plan/
 
 # Local agent/project notes
 DESIRES.md
