@@ -11,6 +11,8 @@ import {
   choiceName,
   choiceValue,
   coerceVariableValue,
+  formatTemplateHelp,
+  formatTemplateList,
   interpolateMustache,
   isRecord,
   parseCliArgs,
@@ -55,19 +57,46 @@ type GithubCreateOptions = {
 
 async function main(): Promise<void> {
   const cli = parseCliArgs(process.argv.slice(2));
-  if (cli.help) {
-    printHelp();
-    return;
-  }
   if (cli.version) {
     printVersion();
     return;
   }
+  if (cli.help && cli.positional[0] === undefined) {
+    printHelp();
+    return;
+  }
+
+  const userConfig = await loadUserConfig();
+  if (cli.help) {
+    const templateSource = await resolveTemplateSource(cli.templateSource, userConfig);
+    const templates = await listTemplates(templateSource.path);
+    if (templates.length === 0) {
+      throw new Error(`No templates found in ${templateSource.path}`);
+    }
+    const templateId = await resolveTemplateId(cli.positional[0], templates, cli.yes);
+    const template = await loadTemplateConfig(join(templateSource.path, templateId));
+    console.log(formatTemplateHelp(templateId, template));
+    return;
+  }
+
+  if (cli.list) {
+    if (cli.positional.length > 0) {
+      throw new Error("--list cannot be combined with a template or project name");
+    }
+    const templateSource = await resolveTemplateSource(cli.templateSource, userConfig);
+    const templates = await listTemplates(templateSource.path);
+    if (templates.length === 0) {
+      throw new Error(`No templates found in ${templateSource.path}`);
+    }
+    console.log(`Templates in ${templateSource.source}:`);
+    console.log(formatTemplateList(templates));
+    return;
+  }
+
   if (cli.positional.length > 2) {
     throw new Error(`Expected at most template and project name, got: ${cli.positional.join(" ")}`);
   }
 
-  const userConfig = await loadUserConfig();
   const system = await collectSystemInfo(userConfig);
   const templateSource = await resolveTemplateSource(cli.templateSource, userConfig);
   const templates = await listTemplates(templateSource.path);
@@ -961,9 +990,12 @@ function withOptionalDescription(
 
 function printHelp(): void {
   console.log(`Usage: new [template] [project-name] [options]
+       new --list
+       new <template> --help
 
 Options:
   --template-source <source>   Local template collection or GitHub owner/repo
+  --list                       List templates in the resolved template source
   --yes                        Use defaults and do not prompt
   --no-github                  Skip GitHub repository creation
   --github-owner <owner>       GitHub owner for repository creation
@@ -971,7 +1003,7 @@ Options:
   --github-visibility <v>      public or private
   --github-public              Shorthand for --github-visibility public
   --github-private             Shorthand for --github-visibility private
-  --help                       Show this help
+  --help                       Show static help or template help with a template
   --version                    Show version
 
 Template variables can be passed as kebab-case flags, for example:

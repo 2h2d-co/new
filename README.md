@@ -3,6 +3,8 @@
 Template-based project initializer.
 
 ```bash
+new --list
+new ts-cli --help
 new ts-cli my-tool
 new pi-extension my-pi-package
 new --template-source 2h2d-co/templates go-cli my-go-tool
@@ -25,14 +27,20 @@ A local template source must contain `new.toml` or `new-cli.toml` at the root. I
 
 ```bash
 new [template] [project-name] [options]
+new --list
+new <template> --help
 ```
 
-With no arguments, `new` prompts for the template and project name.
+With no arguments, `new` prompts for the template and project name. Use `new --list`
+to list templates in the resolved template source, and `new <template> --help` to inspect
+a template's variable flags, defaults, required markers, select choices, and commands before
+rendering it.
 
 Common options:
 
 ```bash
 --template-source <source>   Local template collection or GitHub owner/repo
+--list                       List templates in the resolved template source
 --yes                        Use defaults and do not prompt
 --no-github                  Skip GitHub repository creation
 --github-owner <owner>       GitHub owner for repository creation
@@ -40,6 +48,8 @@ Common options:
 --github-visibility <v>      public or private
 --github-public              Shorthand for --github-visibility public
 --github-private             Shorthand for --github-visibility private
+--help                       Show static help or template help with a template
+--version                    Show version
 ```
 
 Template variables are passed as kebab-case flags:

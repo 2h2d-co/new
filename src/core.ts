@@ -3,6 +3,7 @@ export type GithubVisibility = "public" | "private";
 export type ParsedCliArgs = {
   help: boolean;
   version: boolean;
+  list: boolean;
   yes: boolean;
   github: boolean;
   positional: string[];
@@ -54,6 +55,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
   const parsed: ParsedCliArgs = {
     help: false,
     version: false,
+    list: false,
     yes: false,
     github: true,
     positional: [],
@@ -90,6 +92,10 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     }
     if (rawName === "version") {
       parsed.version = true;
+      continue;
+    }
+    if (rawName === "list") {
+      parsed.list = parseBooleanOption(rawName, inlineValue);
       continue;
     }
     if (rawName === "yes") {
@@ -167,6 +173,71 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
 
 export function flagToVariableName(flagName: string): string {
   return flagName.replace(/-([a-zA-Z0-9])/g, (_match, char: string) => char.toUpperCase());
+}
+
+export function variableNameToFlag(variableName: string): string {
+  return variableName
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/_/g, "-")
+    .toLowerCase();
+}
+
+export function formatTemplateList(
+  templates: { id: string; name: string; description?: string }[],
+): string {
+  const idWidth = templates.reduce((width, template) => Math.max(width, template.id.length), 0);
+  return templates
+    .map((template) => {
+      const details = templateListDetails(template);
+      return details.length > 0 ? `${template.id.padEnd(idWidth)}  ${details}` : template.id;
+    })
+    .join("\n");
+}
+
+export function formatTemplateHelp(templateId: string, config: TemplateConfig): string {
+  const lines = [`Usage: new ${templateId} [project-name] [options]`];
+  const metadata = [config.name, config.description].filter(
+    (value): value is string => value !== undefined && value.length > 0,
+  );
+  if (metadata.length > 0) {
+    lines.push("", ...metadata);
+  }
+
+  const variables = (config.variables ?? []).filter((variable) => variable.name !== "projectName");
+  lines.push("", "Variables:");
+  if (variables.length === 0) {
+    lines.push("  (none)");
+  } else {
+    const rendered = variables.map(formatTemplateVariableHelp);
+    const optionWidth = rendered.reduce(
+      (width, variable) => Math.max(width, variable.option.length),
+      0,
+    );
+    for (const variable of rendered) {
+      lines.push(
+        variable.details.length > 0
+          ? `  ${variable.option.padEnd(optionWidth)}  ${variable.details}`
+          : `  ${variable.option}`,
+      );
+    }
+  }
+
+  if ((config.commands?.length ?? 0) > 0) {
+    lines.push("", "Commands:");
+    for (const command of config.commands ?? []) {
+      lines.push(
+        `  ${command.name === undefined ? command.run : `${command.name}: ${command.run}`}`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "Note: Variables without a declared default may be filled from git, npm, gh, or [defaults] in the global config.",
+  );
+
+  return lines.join("\n");
 }
 
 export function parseGithubVisibility(value: string): GithubVisibility {
@@ -253,6 +324,61 @@ export function choiceName(choice: TemplateVariableChoice): string {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function templateListDetails(template: { id: string; name: string; description?: string }): string {
+  const hasDescription = template.description !== undefined && template.description.length > 0;
+  if (template.name !== template.id && hasDescription) {
+    return `${template.name} - ${template.description}`;
+  }
+  if (template.name !== template.id) {
+    return template.name;
+  }
+  return template.description ?? "";
+}
+
+function formatTemplateVariableHelp(variable: TemplateVariable): {
+  option: string;
+  details: string;
+} {
+  const details: string[] = [];
+  if (variable.prompt !== undefined && variable.prompt.length > 0) {
+    details.push(variable.prompt);
+  }
+  if (Object.hasOwn(variable, "default")) {
+    details.push(`[default: ${formatDefaultValue(variable.default)}]`);
+  }
+  if (variable.required === true) {
+    details.push("(required)");
+  }
+  return {
+    option: formatVariableOption(variable),
+    details: details.join(" "),
+  };
+}
+
+function formatVariableOption(variable: TemplateVariable): string {
+  const flag = variableNameToFlag(variable.name);
+  const option = `--${flag}`;
+  const type = variable.type ?? "string";
+  if (type === "boolean") {
+    return `${option} / --no-${flag}`;
+  }
+  if (type === "select") {
+    const choices = (variable.choices ?? []).map(choiceValue);
+    return `${option} <${choices.length > 0 ? choices.join("|") : "choice"}>`;
+  }
+  return `${option} <${type}>`;
+}
+
+function formatDefaultValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value) ?? String(value);
+  }
+  return String(value);
 }
 
 function parseBooleanOption(name: string, value: string | undefined): boolean {

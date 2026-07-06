@@ -9,6 +9,7 @@
 - Added Eta-based template rendering with interpolation for file paths, defaults, and template commands.
 - Added interactive prompts and `--yes` flows for template selection, project names, and template variables.
 - Added kebab-case CLI flags for supplying template variables non-interactively.
+- Added template listing with `--list` and per-template help with `new <template> --help`.
 - Added generated-project git initialization, template command execution, and optional GitHub repository creation with `gh`.
 - Added global defaults from config, git, npm, and GitHub CLI metadata.
 
