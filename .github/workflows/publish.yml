@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-      - "!v*-*"
 
 permissions: {}
 
@@ -35,7 +34,7 @@ jobs:
           install_args: --locked
           cache: false
 
-      - name: Validate stable release
+      - name: Validate release and derive npm dist-tag
         id: release
         run: node ./scripts/ci-publish-checks.ts
 

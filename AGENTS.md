@@ -19,8 +19,6 @@
 - `npm run check` runs `npm run typecheck` and `npm test`; run it before committing meaningful code changes.
 - `npm run build` removes and rebuilds `dist/`, then ensures `bin/new.js` is executable.
 - `npm run pack:dry` builds and previews npm package contents; run it for changes to `bin/`, package metadata, published files, or build output.
-- `npm run publish:prerelease` runs `npm run check`, builds `dist/`, and dry-runs a prerelease npm publish; pass `-- --execute` only for an intentional real prerelease publish.
-- `mise run publish:prerelease vX.Y.Z-alpha.N` is defined as the raw file task `mise/tasks/publish/prerelease`; it coordinates the local prerelease release flow: verify npm auth and that the exact npm version is unpublished, update package metadata, dry-run publish checks, create or reuse the release commit/tag, push them, and execute the npm prerelease publish. It is intended to be rerunnable after partial failures and must stay interactive for npm publish verification.
 - `npm run fmt`, `npm run lint`, and `npm run lint:fix` are available; `oxfmt` is configured to ignore `dist/**`.
 
 ## CLI and Template Behavior
@@ -44,6 +42,4 @@
   - move `Unreleased` changelog entries into the new release section;
   - commit with `release: vX.Y.Z` as the commit message;
   - tag the release with the matching `vX.Y.Z` tag.
-- Stable releases: push stable `vX.Y.Z` tags and let CI build and publish/stage `latest` with trusted publishing/provenance.
-- Prereleases: use local `npm run publish:prerelease` for `vX.Y.Z-alpha.N`/`beta`/`rc`/etc.; it uses regular `npm publish`, derives a non-`latest` dist-tag, and has no provenance.
-- CI ignores prerelease tags.
+- Push stable or prerelease `vX.Y.Z*` tags and let CI build and stage the package with trusted publishing/provenance. Stable versions use `latest`; prereleases derive a non-`latest` dist-tag from their first prerelease identifier.

@@ -120,19 +120,4 @@ Release flow:
 4. The tag push triggers GitHub Actions to build and stage the package on npm via trusted publishing with npm provenance.
 5. Approve the staged package on npmjs.com, or with `npm stage approve <stage-id>`.
 
-The CI release workflow intentionally ignores prerelease tags such as `vX.Y.Z-alpha.N`; use the local mise release task for those builds:
-
-```bash
-mise run publish:prerelease v0.0.1-alpha.0
-```
-
-The task verifies npm authentication and refuses to continue if the exact package version already exists on npm. It is safe to rerun for the same version after a partial failure: it recognizes an already-updated package version, an existing `release: vX.Y.Z-alpha.N` commit, and existing local or remote tags. When needed, it updates `package.json` and `package-lock.json`, runs the prerelease npm dry-run, commits `release: vX.Y.Z-alpha.N`, tags that commit, atomically pushes the branch and tag, then runs the npm prerelease publish in execute mode. If unrelated worktree changes remain before push/publish, it stops so you can clean them up and rerun the same command. The task is a raw mise file task, so stdin/stdout/stderr are connected directly for npm's interactive publish verification.
-
-The lower-level npm prerelease helper is still available:
-
-```bash
-npm run publish:prerelease
-npm run publish:prerelease -- --execute
-```
-
-`npm run publish:prerelease` runs `npm run check` and `npm run build` first, then defaults to an npm dry-run. Pass `--execute` to perform the real publish. The helper only supports prerelease versions, derives the npm dist-tag from the first prerelease identifier (`alpha` for `X.Y.Z-alpha.N`, `xyz` for `X.Y.Z-xyz.W`), refuses `latest`, and requires a clean worktree plus a pushed `v<version>` tag pointing at the current commit before a real publish.
+Stable and prerelease tags use the same CI flow. Stable versions use the `latest` npm dist-tag; prereleases derive the tag from their first prerelease identifier, such as `alpha`, `beta`, or `rc`.
