@@ -113,10 +113,10 @@ async function main(): Promise<void> {
   const variableFlags = { ...cli.variableFlags };
   const variableNames = new Set((template.variables ?? []).map((variable) => variable.name));
   if (cli.githubOwner !== undefined && variableNames.has("githubOwner")) {
-    variableFlags.githubOwner = cli.githubOwner;
+    variableFlags["githubOwner"] = cli.githubOwner;
   }
   if (cli.githubRepo !== undefined && variableNames.has("repoName")) {
-    variableFlags.repoName = cli.githubRepo;
+    variableFlags["repoName"] = cli.githubRepo;
   }
   rejectUnknownVariableFlags(variableFlags, variableNames);
 
@@ -169,19 +169,19 @@ async function loadUserConfig(): Promise<UserConfig> {
   }
 
   const config: UserConfig = {};
-  if (typeof raw.template_source === "string") {
-    config.template_source = raw.template_source;
+  if (typeof raw["template_source"] === "string") {
+    config.template_source = raw["template_source"];
   }
-  if (isRecord(raw.defaults)) {
-    config.defaults = { ...raw.defaults };
+  if (isRecord(raw["defaults"])) {
+    config.defaults = { ...raw["defaults"] };
   }
-  if (isRecord(raw.github)) {
+  if (isRecord(raw["github"])) {
     const github: NonNullable<UserConfig["github"]> = {};
-    if (typeof raw.github.owner === "string") {
-      github.owner = raw.github.owner;
+    if (typeof raw["github"]["owner"] === "string") {
+      github.owner = raw["github"]["owner"];
     }
-    if (typeof raw.github.visibility === "string") {
-      github.visibility = parseGithubVisibility(raw.github.visibility);
+    if (typeof raw["github"]["visibility"] === "string") {
+      github.visibility = parseGithubVisibility(raw["github"]["visibility"]);
     }
     config.github = github;
   }
@@ -225,16 +225,21 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
 
   const defaults: Record<string, unknown> = { ...config.defaults };
   const authorName = firstString(
-    defaults.authorName,
-    npm.authorName,
-    git.name,
-    github.name,
-    github.login,
+    defaults["authorName"],
+    npm["authorName"],
+    git["name"],
+    github["name"],
+    github["login"],
   );
-  const authorEmail = firstString(defaults.authorEmail, npm.authorEmail, git.email, github.email);
-  const authorUrl = firstString(defaults.authorUrl, npm.authorUrl);
-  const githubOwner = firstString(config.github?.owner, defaults.githubOwner, github.login);
-  const licensor = firstString(defaults.licensor, authorName, githubOwner);
+  const authorEmail = firstString(
+    defaults["authorEmail"],
+    npm["authorEmail"],
+    git["email"],
+    github["email"],
+  );
+  const authorUrl = firstString(defaults["authorUrl"], npm["authorUrl"]);
+  const githubOwner = firstString(config.github?.owner, defaults["githubOwner"], github["login"]);
+  const licensor = firstString(defaults["licensor"], authorName, githubOwner);
 
   assignDefault(defaults, "authorName", authorName);
   assignDefault(defaults, "authorEmail", authorEmail);
@@ -373,25 +378,25 @@ async function templateConfigPath(templateDir: string): Promise<string | undefin
 
 function normalizeTemplateConfig(raw: Record<string, unknown>, configPath: string): TemplateConfig {
   const config: TemplateConfig = {};
-  if (typeof raw.name === "string") {
-    config.name = raw.name;
+  if (typeof raw["name"] === "string") {
+    config.name = raw["name"];
   }
-  if (typeof raw.description === "string") {
-    config.description = raw.description;
+  if (typeof raw["description"] === "string") {
+    config.description = raw["description"];
   }
-  if (raw.variables !== undefined) {
-    if (!Array.isArray(raw.variables)) {
+  if (raw["variables"] !== undefined) {
+    if (!Array.isArray(raw["variables"])) {
       throw new Error(`Template variables must be an array in ${configPath}`);
     }
-    config.variables = raw.variables.map((entry, index) =>
+    config.variables = raw["variables"].map((entry, index) =>
       normalizeTemplateVariable(entry, index, configPath),
     );
   }
-  if (raw.commands !== undefined) {
-    if (!Array.isArray(raw.commands)) {
+  if (raw["commands"] !== undefined) {
+    if (!Array.isArray(raw["commands"])) {
       throw new Error(`Template commands must be an array in ${configPath}`);
     }
-    config.commands = raw.commands.map((entry, index) =>
+    config.commands = raw["commands"].map((entry, index) =>
       normalizeTemplateCommand(entry, index, configPath),
     );
   }
@@ -403,32 +408,32 @@ function normalizeTemplateVariable(
   index: number,
   configPath: string,
 ): TemplateVariable {
-  if (!isRecord(entry) || typeof entry.name !== "string") {
+  if (!isRecord(entry) || typeof entry["name"] !== "string") {
     throw new Error(`Template variable at index ${index} in ${configPath} must have a string name`);
   }
-  const variable: TemplateVariable = { name: entry.name };
-  if (entry.type !== undefined) {
-    if (!["string", "boolean", "select", "number", "path"].includes(String(entry.type))) {
+  const variable: TemplateVariable = { name: entry["name"] };
+  if (entry["type"] !== undefined) {
+    if (!["string", "boolean", "select", "number", "path"].includes(String(entry["type"]))) {
       throw new Error(
-        `Unsupported variable type for ${entry.name} in ${configPath}: ${String(entry.type)}`,
+        `Unsupported variable type for ${entry["name"]} in ${configPath}: ${String(entry["type"])}`,
       );
     }
-    variable.type = entry.type as NonNullable<TemplateVariable["type"]>;
+    variable.type = entry["type"] as NonNullable<TemplateVariable["type"]>;
   }
-  if (typeof entry.prompt === "string") {
-    variable.prompt = entry.prompt;
+  if (typeof entry["prompt"] === "string") {
+    variable.prompt = entry["prompt"];
   }
   if (Object.hasOwn(entry, "default")) {
-    variable.default = entry.default;
+    variable.default = entry["default"];
   }
-  if (typeof entry.required === "boolean") {
-    variable.required = entry.required;
+  if (typeof entry["required"] === "boolean") {
+    variable.required = entry["required"];
   }
-  if (entry.choices !== undefined) {
-    if (!Array.isArray(entry.choices)) {
-      throw new Error(`Variable ${entry.name} choices must be an array in ${configPath}`);
+  if (entry["choices"] !== undefined) {
+    if (!Array.isArray(entry["choices"])) {
+      throw new Error(`Variable ${entry["name"]} choices must be an array in ${configPath}`);
     }
-    variable.choices = entry.choices.map((choice, choiceIndex) =>
+    variable.choices = entry["choices"].map((choice, choiceIndex) =>
       normalizeChoice(choice, variable.name, choiceIndex, configPath),
     );
   }
@@ -444,10 +449,10 @@ function normalizeChoice(
   if (typeof choice === "string") {
     return choice;
   }
-  if (isRecord(choice) && typeof choice.value === "string") {
-    const normalized: { name?: string; value: string } = { value: choice.value };
-    if (typeof choice.name === "string") {
-      normalized.name = choice.name;
+  if (isRecord(choice) && typeof choice["value"] === "string") {
+    const normalized: { name?: string; value: string } = { value: choice["value"] };
+    if (typeof choice["name"] === "string") {
+      normalized.name = choice["name"];
     }
     return normalized;
   }
@@ -461,14 +466,14 @@ function normalizeTemplateCommand(
   index: number,
   configPath: string,
 ): TemplateCommand {
-  if (!isRecord(entry) || typeof entry.run !== "string") {
+  if (!isRecord(entry) || typeof entry["run"] !== "string") {
     throw new Error(
       `Template command at index ${index} in ${configPath} must have a string run value`,
     );
   }
-  const command: TemplateCommand = { run: entry.run };
-  if (typeof entry.name === "string") {
-    command.name = entry.name;
+  const command: TemplateCommand = { run: entry["run"] };
+  if (typeof entry["name"] === "string") {
+    command.name = entry["name"];
   }
   return command;
 }
@@ -553,7 +558,7 @@ async function collectTemplateVariables(
 
   for (const variable of template.variables ?? []) {
     if (variable.name === "projectName") {
-      values.projectName = projectName;
+      values["projectName"] = projectName;
       continue;
     }
 
@@ -763,18 +768,18 @@ async function resolveGithubOptions(
 
   const defaultOwner = firstString(
     ownerOption,
-    stringValue(variables.githubOwner),
+    stringValue(variables["githubOwner"]),
     system.config.github?.owner,
-    system.defaults.githubOwner,
-    system.github.login,
+    system.defaults["githubOwner"],
+    system.github["login"],
   );
   const defaultRepo = firstString(
     repoOption,
-    stringValue(variables.repoName),
-    stringValue(variables.projectName),
+    stringValue(variables["repoName"]),
+    stringValue(variables["projectName"]),
   );
   const defaultVisibility = visibilityOption ?? system.config.github?.visibility ?? "public";
-  const description = stringValue(variables.description);
+  const description = stringValue(variables["description"]);
 
   if (yes) {
     if (defaultOwner === undefined) {
@@ -930,11 +935,11 @@ async function directoryExists(path: string): Promise<boolean> {
 }
 
 function configHome(): string {
-  return process.env.XDG_CONFIG_HOME ?? join(process.env.HOME ?? tmpdir(), ".config");
+  return process.env["XDG_CONFIG_HOME"] ?? join(process.env["HOME"] ?? tmpdir(), ".config");
 }
 
 function cacheHome(): string {
-  return process.env.XDG_CACHE_HOME ?? join(process.env.HOME ?? tmpdir(), ".cache");
+  return process.env["XDG_CACHE_HOME"] ?? join(process.env["HOME"] ?? tmpdir(), ".cache");
 }
 
 function isGithubSlug(source: string): boolean {
