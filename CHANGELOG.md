@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Use a Conventional Commit message when initializing generated Git repositories.
+
 ## [0.0.1] - 2026-07-06
 
 ### Added

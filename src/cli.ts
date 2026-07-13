@@ -745,7 +745,7 @@ async function initializeGitRepository(targetDir: string): Promise<void> {
   console.log("\n> Initialize git repository");
   await runProcess("git", ["init", "-b", "main"], targetDir);
   await runProcess("git", ["add", "."], targetDir);
-  await runProcess("git", ["commit", "-m", "Initial commit"], targetDir);
+  await runProcess("git", ["commit", "-m", "chore: initial commit"], targetDir);
 }
 
 async function resolveGithubOptions(
