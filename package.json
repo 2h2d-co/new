@@ -34,23 +34,23 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x bin/new.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
-    "check": "npm run typecheck && npm test",
+    "check": "hk check --all --check",
     "pack:dry": "npm run build && npm pack --dry-run --allow-directory=all",
     "fmt": "oxfmt",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix"
   },
   "dependencies": {
-    "@inquirer/prompts": "^8.0.1",
-    "eta": "^3.5.0",
-    "smol-toml": "^1.4.2"
+    "@inquirer/prompts": "8.5.2",
+    "eta": "4.6.0",
+    "smol-toml": "1.7.0"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "oxfmt": "^0.56.0",
-    "oxlint": "^1.71.0",
-    "oxlint-tsgolint": "^0.23.0",
-    "typescript": "^6"
+    "@types/node": "22.20.1",
+    "oxfmt": "0.58.0",
+    "oxlint": "1.73.0",
+    "oxlint-tsgolint": "0.24.0",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.19.0"

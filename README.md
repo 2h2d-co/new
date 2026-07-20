@@ -96,6 +96,7 @@ templates/
 ```bash
 npm install
 npm run check
+npm test
 npm run build
 npm run pack:dry
 npm run lint
