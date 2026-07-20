@@ -10,7 +10,7 @@ import {
   variableNameToFlag,
 } from "../src/core.ts";
 
-test("parseCliArgs separates known options and template variable flags", () => {
+void test("parseCliArgs separates known options and template variable flags", () => {
   const parsed = parseCliArgs([
     "ts-cli",
     "demo",
@@ -33,7 +33,7 @@ test("parseCliArgs separates known options and template variable flags", () => {
   });
 });
 
-test("parseCliArgs recognizes list as a known boolean option", () => {
+void test("parseCliArgs recognizes list as a known boolean option", () => {
   const parsed = parseCliArgs(["--list", "--description", "Demo"]);
 
   assert.equal(parsed.list, true);
@@ -44,18 +44,18 @@ test("parseCliArgs recognizes list as a known boolean option", () => {
   assert.deepEqual(disabled.variableFlags, {});
 });
 
-test("flagToVariableName converts kebab-case to camelCase", () => {
+void test("flagToVariableName converts kebab-case to camelCase", () => {
   assert.equal(flagToVariableName("author-name"), "authorName");
   assert.equal(flagToVariableName("github-owner"), "githubOwner");
 });
 
-test("variableNameToFlag converts camelCase to kebab-case", () => {
+void test("variableNameToFlag converts camelCase to kebab-case", () => {
   for (const variableName of ["authorName", "githubOwner", "description"]) {
     assert.equal(flagToVariableName(variableNameToFlag(variableName)), variableName);
   }
 });
 
-test("interpolateMustache supports dotted paths", () => {
+void test("interpolateMustache supports dotted paths", () => {
   assert.equal(
     interpolateMustache("github.com/{{ system.github.login }}/{{ repoName }}", {
       repoName: "demo",
@@ -65,7 +65,7 @@ test("interpolateMustache supports dotted paths", () => {
   );
 });
 
-test("coerceVariableValue validates select values", () => {
+void test("coerceVariableValue validates select values", () => {
   assert.equal(
     coerceVariableValue(
       {
@@ -89,7 +89,7 @@ test("coerceVariableValue validates select values", () => {
   );
 });
 
-test("formatTemplateHelp renders variable flags, defaults, and commands", () => {
+void test("formatTemplateHelp renders variable flags, defaults, and commands", () => {
   const output = formatTemplateHelp("demo", {
     name: "Demo",
     description: "Demo template",
@@ -138,14 +138,14 @@ test("formatTemplateHelp renders variable flags, defaults, and commands", () => 
   assert.match(output, /Variables without a declared default may be filled from git, npm, gh/);
 });
 
-test("formatTemplateHelp omits commands section when commands are absent", () => {
+void test("formatTemplateHelp omits commands section when commands are absent", () => {
   const output = formatTemplateHelp("demo", { variables: [] });
 
   assert.match(output, /Variables:\n  \(none\)/);
   assert.doesNotMatch(output, /\nCommands:/);
 });
 
-test("formatTemplateList aligns ids and displays names and descriptions", () => {
+void test("formatTemplateList aligns ids and displays names and descriptions", () => {
   assert.equal(
     formatTemplateList([
       { id: "demo", name: "Demo", description: "Demo template" },
