@@ -138,8 +138,9 @@ async function main(): Promise<void> {
   }
 
   await renderTemplate(join(templateDir, "files"), targetDir, renderData);
-  await runTemplateCommands(template.commands ?? [], targetDir, renderData);
   await initializeGitRepository(targetDir);
+  await runTemplateCommands(template.commands ?? [], targetDir, renderData);
+  await createInitialGitCommit(targetDir);
 
   const githubOptions = await resolveGithubOptions(
     cli.github,
@@ -749,6 +750,10 @@ async function runTemplateCommands(
 async function initializeGitRepository(targetDir: string): Promise<void> {
   console.log("\n> Initialize git repository");
   await runProcess("git", ["init", "-b", "main"], targetDir);
+}
+
+async function createInitialGitCommit(targetDir: string): Promise<void> {
+  console.log("\n> Create initial commit");
   await runProcess("git", ["add", "."], targetDir);
   await runProcess("git", ["commit", "-m", "chore: initial commit"], targetDir);
 }

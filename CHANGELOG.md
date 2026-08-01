@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Initialize Git before running template commands so project checks can inspect the repository.
+
 ## [0.0.2] - 2026-08-01
 
 ### Fixed
