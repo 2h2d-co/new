@@ -5,6 +5,7 @@ minimum_release_age = "7d"
 
 [tools]
 hk = { version = "1.51.0", postinstall = "hk install --mise" }
+betterleaks = "latest"
 cocogitto = "7.0.0"
 node = "22.23.1"
 npm = "11.18.0"
