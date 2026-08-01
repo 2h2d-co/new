@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.0.2] - 2026-08-01
+
 ### Fixed
 
 - Upgrade the TOML parser to address a denial-of-service vulnerability.
