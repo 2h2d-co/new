@@ -94,6 +94,9 @@ templates/
 stripped. Other files are copied as-is. File and directory names, defaults, and command strings
 support `{{ variable }}` interpolation.
 
+Generated projects with `mise.toml` or `.mise.toml` create their initial Git commit through
+`mise exec` so project-local hook tools are available.
+
 ## npm package reservation
 
 Templates for npm packages can declare an initial publication:

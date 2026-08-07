@@ -191,6 +191,7 @@ void test("template commands run inside the initialized Git repository", async (
   const templateSource = join(root, "templates");
   const templateDir = join(templateSource, "git-aware");
   const targetDir = join(root, "generated-project");
+  const fakeMise = await createFakeMise(root);
 
   try {
     await mkdir(join(templateDir, "files"), { recursive: true });
@@ -207,6 +208,7 @@ void test("template commands run inside the initialized Git repository", async (
       ].join("\n"),
     );
     await writeFile(join(templateDir, "files", "README.md"), "# Generated project\n");
+    await writeFile(join(templateDir, "files", "mise.toml"), '[tools]\nnode = "22"\n');
 
     await execFile(
       process.execPath,
@@ -221,7 +223,11 @@ void test("template commands run inside the initialized Git repository", async (
       ],
       {
         cwd: root,
-        env: gitIdentityEnv(root),
+        env: {
+          ...gitIdentityEnv(root),
+          FAKE_MISE_LOG: fakeMise.logPath,
+          PATH: `${fakeMise.binDir}:${process.env["PATH"] ?? ""}`,
+        },
       },
     );
 
@@ -234,6 +240,14 @@ void test("template commands run inside the initialized Git repository", async (
       cwd: targetDir,
     });
     assert.equal(subject.trim(), "chore: initial commit");
+    assert.deepEqual(JSON.parse(await readFile(fakeMise.logPath, "utf8")), [
+      "exec",
+      "--",
+      "git",
+      "commit",
+      "-m",
+      "chore: initial commit",
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -336,6 +350,29 @@ async function createFakeNpm(root: string): Promise<FakeNpm> {
   );
   await chmod(npmPath, 0o755);
   return { authPath, binDir, logPath };
+}
+
+async function createFakeMise(root: string): Promise<{ binDir: string; logPath: string }> {
+  const binDir = join(root, "fake-mise-bin");
+  const logPath = join(root, "mise.log");
+  const misePath = join(binDir, "mise");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(
+    misePath,
+    [
+      "#!/usr/bin/env node",
+      'const { writeFileSync } = require("node:fs");',
+      'const { spawnSync } = require("node:child_process");',
+      "const args = process.argv.slice(2);",
+      "writeFileSync(process.env.FAKE_MISE_LOG, JSON.stringify(args));",
+      'if (args[0] !== "exec" || args[1] !== "--") process.exit(1);',
+      'const result = spawnSync(args[2], args.slice(3), { env: process.env, stdio: "inherit" });',
+      "process.exit(result.status ?? 1);",
+      "",
+    ].join("\n"),
+  );
+  await chmod(misePath, 0o755);
+  return { binDir, logPath };
 }
 
 function npmTestEnv(

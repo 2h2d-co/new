@@ -10,6 +10,7 @@
 ### Fixed
 
 - Preserve template newlines after Eta interpolation tags.
+- Create initial commits for mise-managed projects inside their project tool environment.
 
 ## [0.0.3] - 2026-08-01
 

@@ -808,7 +808,15 @@ async function initializeGitRepository(targetDir: string): Promise<void> {
 async function createInitialGitCommit(targetDir: string): Promise<void> {
   console.log("\n> Create initial commit");
   await runProcess("git", ["add", "."], targetDir);
-  await runProcess("git", ["commit", "-m", "chore: initial commit"], targetDir);
+  const commitArgs = ["commit", "-m", "chore: initial commit"];
+  if (
+    (await pathExists(join(targetDir, "mise.toml"))) ||
+    (await pathExists(join(targetDir, ".mise.toml")))
+  ) {
+    await runProcess("mise", ["exec", "--", "git", ...commitArgs], targetDir);
+    return;
+  }
+  await runProcess("git", commitArgs, targetDir);
 }
 
 async function resolveGithubOptions(
