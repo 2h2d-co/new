@@ -20,12 +20,14 @@ void test("parseCliArgs separates known options and template variable flags", ()
     "Demo CLI",
     "--author-name=Kaan",
     "--github-private",
+    "--no-npm-publish",
     "--yes",
   ]);
 
   assert.deepEqual(parsed.positional, ["ts-cli", "demo"]);
   assert.equal(parsed.templateSource, "2h2d-co/templates");
   assert.equal(parsed.githubVisibility, "private");
+  assert.equal(parsed.npmPublish, false);
   assert.equal(parsed.yes, true);
   assert.deepEqual(parsed.variableFlags, {
     description: "Demo CLI",
@@ -117,6 +119,12 @@ void test("formatTemplateHelp renders variable flags, defaults, and commands", (
       { name: "items", prompt: "Items", default: ["a", "b"] },
     ],
     commands: [{ name: "Install", run: "npm install" }, { run: "npm test" }],
+    npm: {
+      packageName: "{{ packageName }}",
+      version: "0.0.1-alpha.0",
+      tag: "alpha",
+      access: "public",
+    },
   });
 
   assert.match(output, /^Usage: new demo \[project-name\] \[options\]/);
@@ -135,6 +143,8 @@ void test("formatTemplateHelp renders variable flags, defaults, and commands", (
   assert.match(output, /--settings <string>\s+Settings \[default: {"enabled":true}\]/);
   assert.match(output, /--items <string>\s+Items \[default: \["a","b"\]\]/);
   assert.match(output, /Commands:\n  Install: npm install\n  npm test/);
+  assert.match(output, /npm:\n  Validate package name: {{ packageName }}/);
+  assert.match(output, /Initial publish: 0\.0\.1-alpha\.0 \(tag: alpha, access: public\)/);
   assert.match(output, /Variables without a declared default may be filled from git, npm, gh/);
 });
 

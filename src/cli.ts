@@ -20,6 +20,7 @@ import {
   type GithubVisibility,
   type TemplateCommand,
   type TemplateConfig,
+  type TemplateNpmConfig,
   type TemplateVariable,
   type TemplateVariableChoice,
   type UserConfig,
@@ -53,6 +54,10 @@ type GithubCreateOptions = {
   repo: string;
   visibility: GithubVisibility;
   description?: string;
+};
+
+type NpmPackagePlan = TemplateNpmConfig & {
+  publish: boolean;
 };
 
 async function main(): Promise<void> {
@@ -133,6 +138,14 @@ async function main(): Promise<void> {
     throw new Error(`Target directory already exists: ${targetDir}`);
   }
 
+  const npmPackage = resolveNpmPackagePlan(template.npm, renderData, cli.npmPublish);
+  if (npmPackage !== undefined) {
+    await ensureNpmPackageAvailable(npmPackage.packageName);
+    if (npmPackage.publish) {
+      await ensureNpmAuthenticated(process.cwd());
+    }
+  }
+
   if (templateSource.remote && (template.commands?.length ?? 0) > 0) {
     await confirmRemoteCommands(templateSource.source, template.commands ?? [], cli.yes);
   }
@@ -140,6 +153,9 @@ async function main(): Promise<void> {
   await renderTemplate(join(templateDir, "files"), targetDir, renderData);
   await initializeGitRepository(targetDir);
   await runTemplateCommands(template.commands ?? [], targetDir, renderData);
+  if (npmPackage?.publish === true) {
+    await verifyRenderedPackageIdentity(targetDir, npmPackage);
+  }
   await createInitialGitCommit(targetDir);
 
   const githubOptions = await resolveGithubOptions(
@@ -153,6 +169,9 @@ async function main(): Promise<void> {
   );
   if (githubOptions) {
     await createGithubRepository(targetDir, githubOptions);
+  }
+  if (npmPackage?.publish === true) {
+    await publishInitialNpmPackage(targetDir, npmPackage);
   }
 
   console.log(`\nCreated ${projectName}`);
@@ -401,7 +420,41 @@ function normalizeTemplateConfig(raw: Record<string, unknown>, configPath: strin
       normalizeTemplateCommand(entry, index, configPath),
     );
   }
+  if (raw["npm"] !== undefined) {
+    config.npm = normalizeTemplateNpmConfig(raw["npm"], configPath);
+  }
   return config;
+}
+
+function normalizeTemplateNpmConfig(entry: unknown, configPath: string): TemplateNpmConfig {
+  if (!isRecord(entry)) {
+    throw new Error(`Template npm configuration must be an object in ${configPath}`);
+  }
+
+  const packageName = requiredConfigString(entry, "package_name", "npm package_name", configPath);
+  const version = requiredConfigString(entry, "version", "npm version", configPath);
+  const tag = requiredConfigString(entry, "tag", "npm tag", configPath);
+  const accessValue = requiredConfigString(entry, "access", "npm access", configPath);
+  if (accessValue !== "public" && accessValue !== "restricted") {
+    throw new Error(
+      `Template npm access in ${configPath} must be "public" or "restricted", got ${JSON.stringify(accessValue)}`,
+    );
+  }
+
+  return { packageName, version, tag, access: accessValue };
+}
+
+function requiredConfigString(
+  entry: Record<string, unknown>,
+  key: string,
+  label: string,
+  configPath: string,
+): string {
+  const value = entry[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Template ${label} must be a non-empty string in ${configPath}`);
+  }
+  return value;
 }
 
 function normalizeTemplateVariable(
@@ -849,6 +902,123 @@ async function createGithubRepository(
   await runProcess("gh", args, targetDir);
 }
 
+function resolveNpmPackagePlan(
+  config: TemplateNpmConfig | undefined,
+  data: Record<string, unknown>,
+  publish: boolean,
+): NpmPackagePlan | undefined {
+  if (config === undefined) {
+    return undefined;
+  }
+
+  return {
+    packageName: interpolateRequiredNpmValue("package name", config.packageName, data),
+    version: interpolateRequiredNpmValue("version", config.version, data),
+    tag: interpolateRequiredNpmValue("tag", config.tag, data),
+    access: config.access,
+    publish,
+  };
+}
+
+function interpolateRequiredNpmValue(
+  label: string,
+  value: string,
+  data: Record<string, unknown>,
+): string {
+  const rendered = interpolateMustache(value, data).trim();
+  if (rendered.length === 0) {
+    throw new Error(`Rendered npm ${label} is empty`);
+  }
+  return rendered;
+}
+
+async function ensureNpmPackageAvailable(packageName: string): Promise<void> {
+  console.log("\n> Validate npm package availability");
+
+  try {
+    await execFile("npm", ["view", packageName, "name", "--json"], { encoding: "utf8" });
+  } catch (error) {
+    if (isNpmNotFoundError(error)) {
+      console.log(`npm package name is available: ${packageName}`);
+      return;
+    }
+    throw new Error(
+      `Could not check npm package availability for ${packageName}: ${commandFailureMessage(error)}`,
+    );
+  }
+
+  throw new Error(`npm package name is already taken: ${packageName}`);
+}
+
+async function ensureNpmAuthenticated(cwd: string): Promise<void> {
+  if ((await commandOutput("npm", ["whoami"])) !== undefined) {
+    return;
+  }
+
+  console.log("\n> Authenticate with npm");
+  await runProcess("npm", ["login"], cwd);
+
+  if ((await commandOutput("npm", ["whoami"])) === undefined) {
+    throw new Error("npm login completed, but npm authentication could not be verified");
+  }
+}
+
+async function publishInitialNpmPackage(targetDir: string, plan: NpmPackagePlan): Promise<void> {
+  console.log(`\n> Publish ${plan.packageName}@${plan.version} to npm`);
+  await runProcess(
+    "npm",
+    ["publish", "--tag", plan.tag, "--access", plan.access, "--allow-directory=all"],
+    targetDir,
+  );
+}
+
+async function verifyRenderedPackageIdentity(
+  targetDir: string,
+  plan: NpmPackagePlan,
+): Promise<void> {
+  const packageJsonPath = join(targetDir, "package.json");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Could not read rendered package manifest ${packageJsonPath}: ${String(error)}`,
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Rendered package manifest is not an object: ${packageJsonPath}`);
+  }
+  if (parsed["name"] !== plan.packageName) {
+    throw new Error(
+      `Rendered package name ${JSON.stringify(parsed["name"])} does not match configured npm package ${JSON.stringify(plan.packageName)}`,
+    );
+  }
+  if (parsed["version"] !== plan.version) {
+    throw new Error(
+      `Rendered package version ${JSON.stringify(parsed["version"])} does not match configured initial npm version ${JSON.stringify(plan.version)}`,
+    );
+  }
+}
+
+function isNpmNotFoundError(error: unknown): boolean {
+  const output = commandFailureMessage(error);
+  return /\bE404\b|404 Not Found/i.test(output);
+}
+
+function commandFailureMessage(error: unknown): string {
+  if (!isRecord(error)) {
+    return String(error);
+  }
+
+  const stderr = error["stderr"];
+  if (typeof stderr === "string" && stderr.trim().length > 0) {
+    return stderr.trim();
+  }
+  const message = error["message"];
+  return typeof message === "string" && message.length > 0 ? message : String(error);
+}
+
 async function ensureGhAuthenticated(): Promise<void> {
   try {
     await execFile("gh", ["auth", "status"]);
@@ -1008,6 +1178,7 @@ Options:
   --list                       List templates in the resolved template source
   --yes                        Use defaults and do not prompt
   --no-github                  Skip GitHub repository creation
+  --no-npm-publish             Skip template-declared initial npm publication
   --github-owner <owner>       GitHub owner for repository creation
   --github-repo <name>         GitHub repository name
   --github-visibility <v>      public or private

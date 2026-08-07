@@ -1,4 +1,5 @@
 export type GithubVisibility = "public" | "private";
+export type NpmAccess = "public" | "restricted";
 
 export type ParsedCliArgs = {
   help: boolean;
@@ -6,6 +7,7 @@ export type ParsedCliArgs = {
   list: boolean;
   yes: boolean;
   github: boolean;
+  npmPublish: boolean;
   positional: string[];
   variableFlags: Record<string, string | boolean>;
   templateSource?: string;
@@ -35,11 +37,19 @@ export type TemplateCommand = {
   run: string;
 };
 
+export type TemplateNpmConfig = {
+  packageName: string;
+  version: string;
+  tag: string;
+  access: NpmAccess;
+};
+
 export type TemplateConfig = {
   name?: string;
   description?: string;
   variables?: TemplateVariable[];
   commands?: TemplateCommand[];
+  npm?: TemplateNpmConfig;
 };
 
 export type UserConfig = {
@@ -58,6 +68,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     list: false,
     yes: false,
     github: true,
+    npmPublish: true,
     positional: [],
     variableFlags: {},
   };
@@ -108,6 +119,14 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     }
     if (rawName === "no-github") {
       parsed.github = false;
+      continue;
+    }
+    if (rawName === "npm-publish") {
+      parsed.npmPublish = parseBooleanOption(rawName, inlineValue);
+      continue;
+    }
+    if (rawName === "no-npm-publish") {
+      parsed.npmPublish = false;
       continue;
     }
     if (rawName === "github-public") {
@@ -230,6 +249,15 @@ export function formatTemplateHelp(templateId: string, config: TemplateConfig): 
         `  ${command.name === undefined ? command.run : `${command.name}: ${command.run}`}`,
       );
     }
+  }
+
+  if (config.npm !== undefined) {
+    lines.push(
+      "",
+      "npm:",
+      `  Validate package name: ${config.npm.packageName}`,
+      `  Initial publish: ${config.npm.version} (tag: ${config.npm.tag}, access: ${config.npm.access})`,
+    );
   }
 
   lines.push(

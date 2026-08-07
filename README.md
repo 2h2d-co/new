@@ -43,6 +43,7 @@ Common options:
 --list                       List templates in the resolved template source
 --yes                        Use defaults and do not prompt
 --no-github                  Skip GitHub repository creation
+--no-npm-publish             Skip template-declared initial npm publication
 --github-owner <owner>       GitHub owner for repository creation
 --github-repo <name>         GitHub repository name
 --github-visibility <v>      public or private
@@ -92,6 +93,32 @@ templates/
 `.eta` files are rendered with Eta without automatic whitespace trimming, and the `.eta` suffix is
 stripped. Other files are copied as-is. File and directory names, defaults, and command strings
 support `{{ variable }}` interpolation.
+
+## npm package reservation
+
+Templates for npm packages can declare an initial publication:
+
+```toml
+[npm]
+package_name = "{{ packageName }}"
+version = "0.0.1-alpha.0"
+tag = "alpha"
+access = "public"
+```
+
+Before creating the target directory, `new` checks the exact package name with `npm view`. An
+existing package stops creation. If npm authentication is unavailable, `new` runs `npm login` with
+inherited terminal input and waits for it to finish.
+
+After rendering, template commands, the initial Git commit, and optional GitHub repository
+creation, `new` verifies the rendered `package.json` name and version and runs:
+
+```bash
+npm publish --tag alpha --access public --allow-directory=all
+```
+
+Initial publication is public and irreversible. Use `--no-npm-publish` to skip publication; package
+name availability is still validated.
 
 ## Local development
 

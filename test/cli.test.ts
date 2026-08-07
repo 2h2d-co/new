@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -55,6 +55,131 @@ void test("Eta rendering preserves newlines after interpolation tags", async () 
     assert.equal(
       await readFile(join(targetDir, "README.md"), "utf8"),
       "# generated-project\n\nGenerated description\n\nGenerated content.\n",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test("npm templates validate, authenticate, and publish the initial package", async () => {
+  const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
+  const templateSource = join(root, "templates");
+  const targetDir = join(root, "generated-package");
+  const fakeNpm = await createFakeNpm(root);
+
+  try {
+    await createNpmTemplate(templateSource);
+
+    await execFile(
+      process.execPath,
+      [
+        join(projectRoot, "src", "cli.ts"),
+        "npm-package",
+        "generated-package",
+        "--template-source",
+        templateSource,
+        "--yes",
+        "--no-github",
+      ],
+      {
+        cwd: root,
+        env: npmTestEnv(root, fakeNpm),
+      },
+    );
+
+    const lifecycle = (await readFakeNpmLog(fakeNpm.logPath)).filter((entry) =>
+      ["view", "whoami", "login", "publish"].includes(entry.args[0] ?? ""),
+    );
+    assert.deepEqual(
+      lifecycle.map((entry) => entry.args),
+      [
+        ["view", "generated-package", "name", "--json"],
+        ["whoami"],
+        ["login"],
+        ["whoami"],
+        ["publish", "--tag", "alpha", "--access", "public", "--allow-directory=all"],
+      ],
+    );
+    assert.equal(lifecycle.at(-1)?.cwd, await realpath(targetDir));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test("npm templates reject an occupied package name before scaffolding", async () => {
+  const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
+  const templateSource = join(root, "templates");
+  const targetDir = join(root, "occupied-package");
+  const fakeNpm = await createFakeNpm(root);
+
+  try {
+    await createNpmTemplate(templateSource);
+
+    await assert.rejects(
+      execFile(
+        process.execPath,
+        [
+          join(projectRoot, "src", "cli.ts"),
+          "npm-package",
+          "occupied-package",
+          "--template-source",
+          templateSource,
+          "--yes",
+          "--no-github",
+        ],
+        {
+          cwd: root,
+          env: npmTestEnv(root, fakeNpm, { FAKE_NPM_TAKEN: "true" }),
+        },
+      ),
+      /npm package name is already taken: occupied-package/,
+    );
+
+    await assert.rejects(stat(targetDir));
+    const lifecycle = (await readFakeNpmLog(fakeNpm.logPath)).filter((entry) =>
+      ["view", "whoami", "login", "publish"].includes(entry.args[0] ?? ""),
+    );
+    assert.deepEqual(
+      lifecycle.map((entry) => entry.args),
+      [["view", "occupied-package", "name", "--json"]],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test("--no-npm-publish keeps availability validation but skips authentication and publish", async () => {
+  const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
+  const templateSource = join(root, "templates");
+  const fakeNpm = await createFakeNpm(root);
+
+  try {
+    await createNpmTemplate(templateSource);
+
+    await execFile(
+      process.execPath,
+      [
+        join(projectRoot, "src", "cli.ts"),
+        "npm-package",
+        "unpublished-package",
+        "--template-source",
+        templateSource,
+        "--yes",
+        "--no-github",
+        "--no-npm-publish",
+      ],
+      {
+        cwd: root,
+        env: npmTestEnv(root, fakeNpm),
+      },
+    );
+
+    const lifecycle = (await readFakeNpmLog(fakeNpm.logPath)).filter((entry) =>
+      ["view", "whoami", "login", "publish"].includes(entry.args[0] ?? ""),
+    );
+    assert.deepEqual(
+      lifecycle.map((entry) => entry.args),
+      [["view", "unpublished-package", "name", "--json"]],
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -123,4 +248,115 @@ function gitIdentityEnv(root: string): NodeJS.ProcessEnv {
     GIT_COMMITTER_NAME: "Test Author",
     XDG_CONFIG_HOME: join(root, "config"),
   };
+}
+
+type FakeNpm = {
+  authPath: string;
+  binDir: string;
+  logPath: string;
+};
+
+type FakeNpmLogEntry = {
+  args: string[];
+  cwd: string;
+};
+
+async function createNpmTemplate(templateSource: string): Promise<void> {
+  const templateDir = join(templateSource, "npm-package");
+  await mkdir(join(templateDir, "files"), { recursive: true });
+  await writeFile(join(templateSource, "new.toml"), 'name = "Test templates"\n');
+  await writeFile(
+    join(templateDir, "template.toml"),
+    [
+      'name = "npm package"',
+      "",
+      "[[variables]]",
+      'name = "packageName"',
+      'default = "{{ projectName }}"',
+      "",
+      "[npm]",
+      'package_name = "{{ packageName }}"',
+      'version = "0.0.1-alpha.0"',
+      'tag = "alpha"',
+      'access = "public"',
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(templateDir, "files", "package.json.eta"),
+    [
+      "{",
+      '  "name": <%= it.json(it.packageName) %>,',
+      '  "version": "0.0.1-alpha.0"',
+      "}",
+      "",
+    ].join("\n"),
+  );
+}
+
+async function createFakeNpm(root: string): Promise<FakeNpm> {
+  const binDir = join(root, "fake-bin");
+  const authPath = join(root, "npm-authenticated");
+  const logPath = join(root, "npm.log");
+  const npmPath = join(binDir, "npm");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(
+    npmPath,
+    [
+      "#!/usr/bin/env node",
+      'const { appendFileSync, existsSync, writeFileSync } = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      "appendFileSync(process.env.FAKE_NPM_LOG, `${JSON.stringify({ args, cwd: process.cwd() })}\\n`);",
+      'if (args[0] === "config") { console.log("undefined"); process.exit(0); }',
+      'if (args[0] === "view") {',
+      '  if (process.env.FAKE_NPM_TAKEN === "true") {',
+      "    console.log(JSON.stringify(args[1]));",
+      "    process.exit(0);",
+      "  }",
+      '  console.error("npm error code E404");',
+      "  process.exit(1);",
+      "}",
+      'if (args[0] === "whoami") {',
+      "  if (existsSync(process.env.FAKE_NPM_AUTH_FILE)) {",
+      '    console.log("test-user");',
+      "    process.exit(0);",
+      "  }",
+      "  process.exit(1);",
+      "}",
+      'if (args[0] === "login") {',
+      '  writeFileSync(process.env.FAKE_NPM_AUTH_FILE, "authenticated");',
+      "  process.exit(0);",
+      "}",
+      'if (args[0] === "publish") {',
+      "  process.exit(existsSync(process.env.FAKE_NPM_AUTH_FILE) ? 0 : 1);",
+      "}",
+      "process.exit(0);",
+      "",
+    ].join("\n"),
+  );
+  await chmod(npmPath, 0o755);
+  return { authPath, binDir, logPath };
+}
+
+function npmTestEnv(
+  root: string,
+  fakeNpm: FakeNpm,
+  overrides: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  return {
+    ...gitIdentityEnv(root),
+    PATH: `${fakeNpm.binDir}:${process.env["PATH"] ?? ""}`,
+    FAKE_NPM_AUTH_FILE: fakeNpm.authPath,
+    FAKE_NPM_LOG: fakeNpm.logPath,
+    ...overrides,
+  };
+}
+
+async function readFakeNpmLog(logPath: string): Promise<FakeNpmLogEntry[]> {
+  const content = await readFile(logPath, "utf8");
+  return content
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as FakeNpmLogEntry);
 }

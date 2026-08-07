@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Let npm package templates validate name availability, authenticate interactively, and publish an initial package release.
+- Add `--no-npm-publish` to skip initial publication while retaining package-name validation.
+
 ### Fixed
 
 - Preserve template newlines after Eta interpolation tags.
