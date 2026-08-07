@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Preserve template newlines after Eta interpolation tags.
+
 ## [0.0.3] - 2026-08-01
 
 ### Fixed

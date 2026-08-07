@@ -673,7 +673,7 @@ async function renderTemplate(
   data: Record<string, unknown>,
 ): Promise<void> {
   await mkdir(targetDir);
-  const eta = new Eta({ autoEscape: false });
+  const eta = new Eta({ autoEscape: false, autoTrim: false });
   await renderDirectory(templateFilesDir, templateFilesDir, targetDir, data, eta);
 }
 

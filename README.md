@@ -89,7 +89,9 @@ templates/
         cli.ts.eta
 ```
 
-`.eta` files are rendered with Eta and the `.eta` suffix is stripped. Other files are copied as-is. File and directory names, defaults, and command strings support `{{ variable }}` interpolation.
+`.eta` files are rendered with Eta without automatic whitespace trimming, and the `.eta` suffix is
+stripped. Other files are copied as-is. File and directory names, defaults, and command strings
+support `{{ variable }}` interpolation.
 
 ## Local development
 
