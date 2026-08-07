@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.1.0] - 2026-08-07
+
 ### Added
 
 - Let npm package templates validate name availability, authenticate interactively, and publish an initial package release.
