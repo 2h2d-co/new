@@ -153,7 +153,7 @@ Release flow:
 2. The release command builds the package from the staged Git index, records its SHA-256 in the SSH-signed release commit, rebuilds the commit to prove reproducibility, and creates a lightweight `vX.Y.Z` tag.
 3. Inspect the commit and tag, then push them atomically with `git push --atomic origin main vX.Y.Z`.
 4. The tag push triggers a read-only GitHub Actions job that builds, tests, packs, and inspects the package.
-5. A separate credentialed job verifies the release commit signature and requires its package to match the locally signed SHA-256 before attesting and staging that exact archive through npm trusted publishing with npm provenance.
+5. After approval in the tag-restricted `npm-publish` environment, a separate credentialed job verifies the release commit signature and requires its package to match the locally signed SHA-256 before attesting and staging that exact archive through npm trusted publishing with npm provenance.
 6. Approve the staged package on npmjs.com, or with `npm stage approve <stage-id>`.
 
 Stable and prerelease tags use the same CI flow. Stable versions use the `latest` npm dist-tag; prereleases derive the tag from their first prerelease identifier, such as `alpha`, `beta`, or `rc`.
