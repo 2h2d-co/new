@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-## [0.1.1-alpha.0] - 2026-08-10
+### Fixed
+
+- Pass the staged package archive as an absolute path so npm treats it as a local tarball.
 
 ### Security
 

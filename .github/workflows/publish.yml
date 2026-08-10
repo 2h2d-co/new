@@ -174,7 +174,7 @@ jobs:
             echo "expected exactly one npm package archive, found ${#archives[@]}" >&2
             exit 1
           fi
-          archive=${archives[0]}
+          archive=$(realpath "${archives[0]}")
           checksum="$archive.sha256"
           test -f "$checksum"
           (
