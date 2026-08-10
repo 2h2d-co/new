@@ -5,6 +5,7 @@
 ### Fixed
 
 - Pass the staged package archive as an absolute path so npm treats it as a local tarball.
+- Read the npm stage ID from the package-keyed JSON response.
 
 ### Security
 

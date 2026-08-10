@@ -258,10 +258,16 @@ jobs:
             process.stdin.on("data", (chunk) => chunks.push(chunk));
             process.stdin.on("end", () => {
               const result = JSON.parse(Buffer.concat(chunks).toString());
-              if (typeof result.stageId !== "string") {
+              const records = result && typeof result === "object"
+                ? [result, ...Object.values(result)]
+                : [];
+              const stagedPackage = records.find(
+                (value) => value && typeof value === "object" && typeof value.stageId === "string",
+              );
+              if (!stagedPackage) {
                 throw new Error("npm did not report a stage ID");
               }
-              process.stdout.write(result.stageId);
+              process.stdout.write(stagedPackage.stageId);
             });
           ' <<< "$stage_output")
           printf '%s\n' "$stage_output"
