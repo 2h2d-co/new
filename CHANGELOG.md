@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.1.1-alpha.0] - 2026-08-10
+
 ### Security
 
 - Isolate npm trusted-publishing credentials from package builds and stage the exact attested package archive.
