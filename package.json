@@ -36,6 +36,7 @@
     "test": "node --test --test-concurrency=1 test/*.test.ts",
     "check": "hk check --all --check",
     "pack:dry": "npm run build && npm pack --dry-run --allow-directory=all",
+    "release": "node scripts/release.ts",
     "fmt": "oxfmt",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix"

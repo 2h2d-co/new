@@ -41,7 +41,7 @@ jobs:
         run: node ./scripts/ci-publish-checks.ts
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check
         run: npm run check
@@ -168,6 +168,16 @@ jobs:
             echo "release commit subject $subject does not match release: $GITHUB_REF_NAME" >&2
             exit 1
           fi
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/.github/release-signers" \
+            verify-commit "$tag_commit"
+          expected_digest=$(git log -1 \
+            --format='%(trailers:key=Npm-Artifact-SHA256,valueonly)' \
+            "$tag_commit")
+          if [[ ! $expected_digest =~ ^[0-9a-f]{64}$ ]]; then
+            echo "release commit is missing a valid Npm-Artifact-SHA256 trailer" >&2
+            exit 1
+          fi
 
           mapfile -t archives < <(find npm-package -maxdepth 1 -type f -name '*.tgz' -print)
           if (( ${#archives[@]} != 1 )); then
@@ -181,6 +191,27 @@ jobs:
             cd "$(dirname "$archive")"
             shasum -a 256 -c "$(basename "$checksum")"
           )
+          actual_digest=$(shasum -a 256 "$archive" | awk '{print $1}')
+          if [[ $actual_digest != "$expected_digest" ]]; then
+            echo "package digest $actual_digest does not match signed local digest $expected_digest" >&2
+            exit 1
+          fi
+
+          actual_files=$(tar -tzf "$archive" | LC_ALL=C sort)
+          expected_files=$(printf '%s\n' \
+            package/CHANGELOG.md \
+            package/LICENSE \
+            package/README.md \
+            package/bin/new.js \
+            package/dist/cli.js \
+            package/dist/core.js \
+            package/package.json |
+            LC_ALL=C sort)
+          if [[ $actual_files != "$expected_files" ]]; then
+            echo "npm package contains unexpected files" >&2
+            diff -u <(printf '%s\n' "$expected_files") <(printf '%s\n' "$actual_files") || true
+            exit 1
+          fi
 
           package_name=$(tar -xOf "$archive" package/package.json | node -e '
             const chunks = [];
@@ -189,6 +220,21 @@ jobs:
               const manifest = JSON.parse(Buffer.concat(chunks).toString());
               if (manifest.name !== "@2h2d/new" || typeof manifest.version !== "string") {
                 throw new Error("unexpected package name or version");
+              }
+              const scripts = manifest.scripts && typeof manifest.scripts === "object"
+                ? manifest.scripts
+                : {};
+              const forbidden = ["preinstall", "install", "postinstall"].filter(
+                (name) => typeof scripts[name] === "string",
+              );
+              if (forbidden.length > 0) {
+                throw new Error(
+                  "install lifecycle scripts are forbidden: " + forbidden.join(", "),
+                );
+              }
+              const bundled = manifest.bundledDependencies ?? manifest.bundleDependencies;
+              if (bundled === true || (Array.isArray(bundled) && bundled.length > 0)) {
+                throw new Error("bundled dependencies are forbidden");
               }
               process.stdout.write(manifest.name);
             });

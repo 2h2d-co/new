@@ -10,6 +10,7 @@
 ### Security
 
 - Isolate npm trusted-publishing credentials from package builds and stage the exact attested package archive.
+- Require dependency installation without lifecycle scripts and an independently built digest from the SSH-signed release commit before staging.
 
 ## [0.1.0] - 2026-08-07
 
