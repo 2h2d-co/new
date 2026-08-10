@@ -20,15 +20,6 @@ type PackResult = {
 };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const expectedPackageFiles = [
-  "CHANGELOG.md",
-  "LICENSE",
-  "README.md",
-  "bin/new.js",
-  "dist/cli.js",
-  "dist/core.js",
-  "package.json",
-];
 const forbiddenInstallScripts = ["preinstall", "install", "postinstall"];
 const npmExecPath = process.env["npm_execpath"];
 
@@ -44,6 +35,7 @@ if (!isSemver(version)) {
   throw new Error(`Invalid release version: ${version}`);
 }
 
+const expectedPackageFiles = await readExpectedPackageFiles();
 const tag = `v${version}`;
 await createRelease(version, tag);
 
@@ -173,6 +165,20 @@ async function validatePackage(
   if (bundled === true || (Array.isArray(bundled) && bundled.length > 0)) {
     throw new Error("Bundled npm dependencies are forbidden.");
   }
+}
+
+async function readExpectedPackageFiles(): Promise<string[]> {
+  const manifestPath = join(root, ".github", "npm-package-files");
+  const contents = await readFile(manifestPath, "utf8");
+  const files = contents.split(/\r?\n/).filter(Boolean).sort();
+  if (
+    files.length === 0 ||
+    files.some((file) => file.trim() !== file || file.startsWith("/") || file.includes("..")) ||
+    new Set(files).size !== files.length
+  ) {
+    throw new Error(`${manifestPath} contains invalid package paths.`);
+  }
+  return files;
 }
 
 function parsePackResult(output: string): PackResult {

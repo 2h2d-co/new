@@ -11,6 +11,7 @@
 
 - Isolate npm trusted-publishing credentials from package builds and stage the exact attested package archive.
 - Require dependency installation without lifecycle scripts and an independently built digest from the SSH-signed release commit before staging.
+- Use one exact package-content manifest across local and CI validation, and suppress lifecycle scripts while CI packs the archive.
 
 ## [0.1.0] - 2026-08-07
 

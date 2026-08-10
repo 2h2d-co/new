@@ -1,0 +1,7 @@
+CHANGELOG.md
+LICENSE
+README.md
+bin/new.js
+dist/cli.js
+dist/core.js
+package.json

@@ -20,6 +20,7 @@
 - `npm test` runs behavioral tests separately from the quality gate.
 - `npm run build` removes and rebuilds `dist/`, then ensures `bin/new.js` is executable.
 - `npm run pack:dry` builds and previews npm package contents; run it for changes to `bin/`, package metadata, published files, or build output.
+- Keep `.github/npm-package-files` synchronized with every intentional package-content change; local release validation and both CI jobs enforce it exactly.
 - `npm run fmt`, `npm run lint`, and `npm run lint:fix` are available; `oxfmt` is configured to ignore `dist/**`.
 
 ## CLI and Template Behavior

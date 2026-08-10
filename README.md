@@ -145,6 +145,8 @@ This package publishes the executable shim, generated JavaScript, and project fi
 - `CHANGELOG.md`
 - `LICENSE`
 
+`.github/npm-package-files` is the authoritative package-content allowlist used by the local release command and both CI jobs. Update it whenever the intended published file set changes.
+
 Release flow:
 
 1. Run `npm run release -- X.Y.Z` from a clean, synchronized `main`.

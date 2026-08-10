@@ -60,7 +60,7 @@ jobs:
           npm run build
           package_dir="$RUNNER_TEMP/npm-package"
           mkdir -p "$package_dir"
-          pack_output=$(npm pack --json --pack-destination "$package_dir" --allow-directory=all)
+          pack_output=$(npm pack --json --ignore-scripts --pack-destination "$package_dir" --allow-directory=all)
           archive_name=$(node -e '
             const chunks = [];
             process.stdin.on("data", (chunk) => chunks.push(chunk));
@@ -90,14 +90,18 @@ jobs:
           ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
           set -euo pipefail
-          package_files="$RUNNER_TEMP/package-files.txt"
-          tar -tzf "$ARCHIVE" > "$package_files"
-          grep -qx 'package/package.json' "$package_files"
-          grep -qx 'package/bin/new.js' "$package_files"
-          grep -qx 'package/dist/cli.js' "$package_files"
-          grep -qx 'package/README.md' "$package_files"
-          grep -qx 'package/CHANGELOG.md' "$package_files"
-          grep -qx 'package/LICENSE' "$package_files"
+          actual_files=$(tar -tzf "$ARCHIVE" | LC_ALL=C sort)
+          expected_files=$(
+            while IFS= read -r file; do
+              test -n "$file" && printf 'package/%s\n' "$file"
+            done < .github/npm-package-files |
+              LC_ALL=C sort
+          )
+          if [[ $actual_files != "$expected_files" ]]; then
+            echo "npm package contains unexpected files" >&2
+            diff -u <(printf '%s\n' "$expected_files") <(printf '%s\n' "$actual_files") || true
+            exit 1
+          fi
 
       - name: Upload package archive
         id: upload
@@ -198,15 +202,12 @@ jobs:
           fi
 
           actual_files=$(tar -tzf "$archive" | LC_ALL=C sort)
-          expected_files=$(printf '%s\n' \
-            package/CHANGELOG.md \
-            package/LICENSE \
-            package/README.md \
-            package/bin/new.js \
-            package/dist/cli.js \
-            package/dist/core.js \
-            package/package.json |
-            LC_ALL=C sort)
+          expected_files=$(
+            while IFS= read -r file; do
+              test -n "$file" && printf 'package/%s\n' "$file"
+            done < .github/npm-package-files |
+              LC_ALL=C sort
+          )
           if [[ $actual_files != "$expected_files" ]]; then
             echo "npm package contains unexpected files" >&2
             diff -u <(printf '%s\n' "$expected_files") <(printf '%s\n' "$actual_files") || true
