@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+
+- Isolate npm trusted-publishing credentials from package builds and stage the exact attested package archive.
+
 ## [0.1.0] - 2026-08-07
 
 ### Added
