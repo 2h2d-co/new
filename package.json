@@ -44,7 +44,7 @@
   "dependencies": {
     "@inquirer/prompts": "8.5.2",
     "eta": "4.6.0",
-    "smol-toml": "1.7.0"
+    "smol-toml": "1.7.1"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
