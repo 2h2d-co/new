@@ -20,6 +20,13 @@ type PackResult = {
 };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const packageName = "@2h2d/new";
+const packageDirectory = ".";
+const packWorkspace: string | undefined = undefined;
+const versionWorkspaces: string[] = [];
+const releaseMetadataFiles: string[] = ["package-lock.json", "package.json"];
+const buildScripts: string[] = ["build"];
+const executablePackageFiles: string[] = ["bin/new.js"];
 const forbiddenInstallScripts = ["preinstall", "install", "postinstall"];
 const npmExecPath = process.env["npm_execpath"];
 
@@ -53,7 +60,20 @@ async function createRelease(releaseVersion: string, releaseTag: string): Promis
   }
 
   npm(["version", releaseVersion, "--no-git-tag-version", "--ignore-scripts"], root);
-  git(["add", "package.json", "package-lock.json"]);
+  for (const workspace of versionWorkspaces) {
+    npm(
+      [
+        "version",
+        releaseVersion,
+        "--workspace",
+        workspace,
+        "--no-git-tag-version",
+        "--ignore-scripts",
+      ],
+      root,
+    );
+  }
+  git(["add", ...releaseMetadataFiles]);
   assertStagedReleaseFiles();
 
   const localDigest = await buildPackageFromIndex(releaseVersion);
@@ -101,7 +121,7 @@ function requireCleanMain(): void {
 
 function assertStagedReleaseFiles(): void {
   const files = gitOutput(["diff", "--cached", "--name-only"]).split("\n").filter(Boolean).sort();
-  const expected = ["package-lock.json", "package.json"];
+  const expected = [...releaseMetadataFiles].sort();
   if (JSON.stringify(files) !== JSON.stringify(expected)) {
     throw new Error(`Release metadata changed unexpected files: ${files.join(", ")}`);
   }
@@ -117,12 +137,22 @@ async function buildPackageFromIndex(releaseVersion: string): Promise<string> {
   try {
     git(["checkout-index", "--all", "--force", `--prefix=${source}/`]);
     npm(["ci", "--ignore-scripts"], source);
-    npm(["run", "build"], source);
-    const packOutput = npmOutput(
-      ["pack", "--json", "--ignore-scripts", "--allow-directory=all", "--pack-destination", output],
-      source,
-    );
-    const result = parsePackResult(packOutput);
+    for (const buildScript of buildScripts) {
+      npm(["run", buildScript], source);
+    }
+
+    const packArgs = [
+      "pack",
+      "--json",
+      "--ignore-scripts",
+      "--allow-directory=all",
+      "--pack-destination",
+      output,
+    ];
+    if (packWorkspace) {
+      packArgs.push("--workspace", packWorkspace);
+    }
+    const result = parsePackResult(npmOutput(packArgs, source));
     await validatePackage(source, result, releaseVersion);
 
     const archive = join(output, result.filename);
@@ -138,7 +168,7 @@ async function validatePackage(
   result: PackResult,
   releaseVersion: string,
 ): Promise<void> {
-  if (result.name !== "@2h2d/new" || result.version !== releaseVersion) {
+  if (result.name !== packageName || result.version !== releaseVersion) {
     throw new Error(`Unexpected package identity ${result.name}@${result.version}.`);
   }
 
@@ -149,12 +179,15 @@ async function validatePackage(
     );
   }
 
-  const executable = result.files.find((file) => file.path === "bin/new.js");
-  if (!executable || (executable.mode & 0o111) === 0) {
-    throw new Error("bin/new.js is not executable in the npm package.");
+  for (const executablePath of executablePackageFiles) {
+    const executable = result.files.find((file) => file.path === executablePath);
+    if (!executable || (executable.mode & 0o111) === 0) {
+      throw new Error(`${executablePath} is not executable in the npm package.`);
+    }
   }
 
-  const manifest = parseJsonRecord(await readFile(join(source, "package.json"), "utf8"));
+  const manifestPath = join(source, packageDirectory, "package.json");
+  const manifest = parseJsonRecord(await readFile(manifestPath, "utf8"));
   const scripts = isJsonRecord(manifest["scripts"]) ? manifest["scripts"] : {};
   const forbidden = forbiddenInstallScripts.filter((script) => typeof scripts[script] === "string");
   if (forbidden.length > 0) {
