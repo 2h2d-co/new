@@ -1116,6 +1116,7 @@ async function ensureNpmPackageAvailable(packageName: string): Promise<void> {
     }
     throw new Error(
       `Could not check npm package availability for ${packageName}: ${commandFailureMessage(error)}`,
+      { cause: error },
     );
   }
 
@@ -1155,6 +1156,7 @@ async function verifyRenderedPackageIdentity(
   } catch (error) {
     throw new Error(
       `Could not read rendered package manifest ${packageJsonPath}: ${String(error)}`,
+      { cause: error },
     );
   }
 
@@ -1198,9 +1200,10 @@ function isCommandFailure(value: unknown): value is CommandFailure {
 async function ensureGhAuthenticated(): Promise<void> {
   try {
     await execFile("gh", ["auth", "status"]);
-  } catch {
+  } catch (error) {
     throw new Error(
       "GitHub creation is enabled, but gh is not installed or not authenticated. Run gh auth login or pass --no-github.",
+      { cause: error },
     );
   }
 }
@@ -1275,7 +1278,10 @@ async function commandOutput(command: string, args: string[]): Promise<string | 
       return undefined;
     }
     return output;
-  } catch {
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
     return undefined;
   }
 }
@@ -1284,16 +1290,22 @@ async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 
 async function directoryExists(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();
-  } catch {
-    return false;
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -1307,6 +1319,10 @@ function cacheHome(): string {
 
 function isGithubSlug(source: string): boolean {
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source);
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 function assignIfPresent(target: StringValues, key: string, value: string | undefined): void {
@@ -1385,6 +1401,7 @@ function printVersion(): void {
   console.log(stringValue(packageJson["version"]) ?? "0.0.0");
 }
 
+// oxlint-disable-next-line 2h2d/no-silent-error-suppression -- The CLI boundary renders failures and converts them to process exit codes.
 void main().catch((error: unknown) => {
   if (error instanceof Error && error.name === "ExitPromptError") {
     console.error("new: Cancelled by user (Ctrl+C).");
