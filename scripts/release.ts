@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-type JsonRecord = Record<string, unknown>;
+import { isConfigObject, isNumber, isString, parseConfigObject } from "../src/core.ts";
 
 type PackFile = {
   path: string;
@@ -33,6 +33,7 @@ const npmExecPath = process.env["npm_execpath"];
 if (!npmExecPath) {
   throw new Error("Run this release command through npm so npm_execpath is available.");
 }
+const packageManagerPath = npmExecPath;
 
 const version = process.argv[2];
 if (!version || process.argv.length !== 3) {
@@ -187,9 +188,9 @@ async function validatePackage(
   }
 
   const manifestPath = join(source, packageDirectory, "package.json");
-  const manifest = parseJsonRecord(await readFile(manifestPath, "utf8"));
-  const scripts = isJsonRecord(manifest["scripts"]) ? manifest["scripts"] : {};
-  const forbidden = forbiddenInstallScripts.filter((script) => typeof scripts[script] === "string");
+  const manifest = parseConfigObject(await readFile(manifestPath, "utf8"), manifestPath);
+  const scripts = isConfigObject(manifest["scripts"]) ? manifest["scripts"] : {};
+  const forbidden = forbiddenInstallScripts.filter((script) => isString(scripts[script]));
   if (forbidden.length > 0) {
     throw new Error(`Install lifecycle scripts are forbidden: ${forbidden.join(", ")}`);
   }
@@ -216,24 +217,20 @@ async function readExpectedPackageFiles(): Promise<string[]> {
 
 function parsePackResult(output: string): PackResult {
   const parsed: unknown = JSON.parse(output);
-  if (!Array.isArray(parsed) || parsed.length !== 1 || !isJsonRecord(parsed[0])) {
+  if (!Array.isArray(parsed) || parsed.length !== 1 || !isConfigObject(parsed[0])) {
     throw new Error("npm pack did not report exactly one package.");
   }
   const result = parsed[0];
   if (
-    typeof result["filename"] !== "string" ||
-    typeof result["name"] !== "string" ||
-    typeof result["version"] !== "string" ||
+    !isString(result["filename"]) ||
+    !isString(result["name"]) ||
+    !isString(result["version"]) ||
     !Array.isArray(result["files"])
   ) {
     throw new Error("npm pack returned invalid package metadata.");
   }
   const files = result["files"].map((value) => {
-    if (
-      !isJsonRecord(value) ||
-      typeof value["path"] !== "string" ||
-      typeof value["mode"] !== "number"
-    ) {
+    if (!isConfigObject(value) || !isString(value["path"]) || !isNumber(value["mode"])) {
       throw new Error("npm pack returned invalid file metadata.");
     }
     return { path: value["path"], mode: value["mode"] };
@@ -270,11 +267,11 @@ function verifyReleaseCommit(commit: string, releaseTag: string, digest: string)
 }
 
 function npm(args: string[], cwd: string): void {
-  run(process.execPath, [npmExecPath!, ...args], cwd, false);
+  run(process.execPath, [packageManagerPath, ...args], cwd, false);
 }
 
 function npmOutput(args: string[], cwd: string): string {
-  return run(process.execPath, [npmExecPath!, ...args], cwd, true);
+  return run(process.execPath, [packageManagerPath, ...args], cwd, true);
 }
 
 function git(args: string[]): void {
@@ -310,18 +307,6 @@ function run(command: string, args: string[], cwd: string, capture: boolean): st
     throw new Error(`${command} ${args.join(" ")} exited with ${result.status ?? "no status"}.`);
   }
   return capture ? result.stdout.trim() : "";
-}
-
-function parseJsonRecord(value: string): JsonRecord {
-  const parsed: unknown = JSON.parse(value);
-  if (!isJsonRecord(parsed)) {
-    throw new Error("Expected a JSON object.");
-  }
-  return parsed;
-}
-
-function isJsonRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isSemver(value: string): boolean {

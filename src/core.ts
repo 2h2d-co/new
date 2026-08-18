@@ -1,6 +1,31 @@
 export type GithubVisibility = "public" | "private";
 export type NpmAccess = "public" | "restricted";
 
+export type ConfigPrimitive = bigint | boolean | null | number | string;
+
+export type ConfigValue = ConfigObject | ConfigPrimitive | ConfigValue[] | Date;
+
+export type ConfigObject = {
+  [key: string]: ConfigValue;
+};
+
+export type StringValues = {
+  [key: string]: string;
+};
+
+export type RenderJson = (value: RenderValue) => string | undefined;
+
+export type RenderValue = ConfigValue | RenderJson | RenderObject;
+
+export type RenderObject = {
+  [key: string]: RenderValue;
+};
+
+export type RenderData = RenderObject & {
+  system: ConfigObject;
+  json: RenderJson;
+};
+
 export type ParsedCliArgs = {
   help: boolean;
   version: boolean;
@@ -16,18 +41,18 @@ export type ParsedCliArgs = {
   githubVisibility?: GithubVisibility;
 };
 
-export type TemplateVariableChoice =
-  | string
-  | {
-      name?: string;
-      value: string;
-    };
+export type TemplateVariableChoice = string | TemplateVariableChoiceDetails;
+
+export type TemplateVariableChoiceDetails = {
+  name?: string;
+  value: string;
+};
 
 export type TemplateVariable = {
   name: string;
   type?: "string" | "boolean" | "select" | "number" | "path";
   prompt?: string;
-  default?: unknown;
+  default?: ConfigValue;
   required?: boolean;
   choices?: TemplateVariableChoice[];
 };
@@ -59,7 +84,7 @@ export type TemplateConfig = {
 
 export type UserConfig = {
   template_source?: string;
-  defaults?: Record<string, unknown>;
+  defaults?: ConfigObject;
   github?: {
     owner?: string;
     visibility?: GithubVisibility;
@@ -289,7 +314,7 @@ export function parseGithubVisibility(value: string): GithubVisibility {
   throw new Error(`GitHub visibility must be "public" or "private", got ${JSON.stringify(value)}`);
 }
 
-export function interpolateMustache(input: string, context: Record<string, unknown>): string {
+export function interpolateMustache(input: string, context: RenderObject): string {
   return input.replace(
     /{{\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*}}/g,
     (_match, expression: string) => {
@@ -302,27 +327,31 @@ export function interpolateMustache(input: string, context: Record<string, unkno
   );
 }
 
-export function getContextValue(context: Record<string, unknown>, path: string): unknown {
-  let current: unknown = context;
+export function getContextValue(context: RenderObject, path: string): RenderValue | undefined {
+  let current: RenderValue = context;
   for (const part of path.split(".")) {
-    if (!isRecord(current) || !(part in current)) {
+    if (!isRenderObject(current) || !(part in current)) {
       return undefined;
     }
-    current = current[part];
+    const next: RenderValue | undefined = current[part];
+    if (next === undefined) {
+      return undefined;
+    }
+    current = next;
   }
   return current;
 }
 
 export function coerceVariableValue(
   variable: TemplateVariable,
-  raw: unknown,
+  raw: ConfigValue,
 ): string | boolean | number {
   const type = variable.type ?? "string";
   if (type === "boolean") {
-    if (typeof raw === "boolean") {
+    if (isBoolean(raw)) {
       return raw;
     }
-    if (typeof raw === "string") {
+    if (isString(raw)) {
       const normalized = raw.toLowerCase();
       if (["true", "1", "yes", "y", "on"].includes(normalized)) {
         return true;
@@ -335,7 +364,7 @@ export function coerceVariableValue(
   }
 
   if (type === "number") {
-    const numberValue = typeof raw === "number" ? raw : Number(raw);
+    const numberValue = isNumber(raw) ? raw : Number(raw);
     if (!Number.isFinite(numberValue)) {
       throw new Error(`Variable ${variable.name} expects a number value`);
     }
@@ -348,7 +377,7 @@ export function coerceVariableValue(
     if (choices.length === 0) {
       throw new Error(`Variable ${variable.name} is a select variable without choices`);
     }
-    const values = choices.map((choice) => (typeof choice === "string" ? choice : choice.value));
+    const values = choices.map((choice) => (isString(choice) ? choice : choice.value));
     if (!values.includes(stringValue)) {
       throw new Error(`Variable ${variable.name} must be one of: ${values.join(", ")}`);
     }
@@ -357,15 +386,64 @@ export function coerceVariableValue(
 }
 
 export function choiceValue(choice: TemplateVariableChoice): string {
-  return typeof choice === "string" ? choice : choice.value;
+  return isString(choice) ? choice : choice.value;
 }
 
 export function choiceName(choice: TemplateVariableChoice): string {
-  return typeof choice === "string" ? choice : (choice.name ?? choice.value);
+  return isString(choice) ? choice : (choice.name ?? choice.value);
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function parseConfigObject(contents: string, label: string): ConfigObject {
+  const parsed: unknown = JSON.parse(contents);
+  if (!isConfigObject(parsed)) {
+    throw new Error(`Expected a configuration object: ${label}`);
+  }
+  return parsed;
+}
+
+export function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+export function isNumber(value: unknown): value is number {
+  return typeof value === "number";
+}
+
+export function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+export function isConfigValue(value: unknown): value is ConfigValue {
+  if (
+    value === null ||
+    typeof value === "bigint" ||
+    isBoolean(value) ||
+    isNumber(value) ||
+    isString(value) ||
+    value instanceof Date
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isConfigValue);
+  }
+  return typeof value === "object" && Object.values(value).every(isConfigValue);
+}
+
+export function isConfigObject(value: unknown): value is ConfigObject {
+  return (
+    typeof value === "object" &&
+    isConfigValue(value) &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof Date)
+  );
+}
+
+export function isRenderObject(value: RenderValue): value is RenderObject {
+  return (
+    typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)
+  );
 }
 
 function templateListDetails(template: { id: string; name: string; description?: string }): string {
@@ -379,10 +457,12 @@ function templateListDetails(template: { id: string; name: string; description?:
   return template.description ?? "";
 }
 
-function formatTemplateVariableHelp(variable: TemplateVariable): {
+type TemplateVariableHelp = {
   option: string;
   details: string;
-} {
+};
+
+function formatTemplateVariableHelp(variable: TemplateVariable): TemplateVariableHelp {
   const details: string[] = [];
   if (variable.prompt !== undefined && variable.prompt.length > 0) {
     details.push(variable.prompt);
@@ -413,11 +493,11 @@ function formatVariableOption(variable: TemplateVariable): string {
   return `${option} <${type}>`;
 }
 
-function formatDefaultValue(value: unknown): string {
-  if (typeof value === "string") {
+function formatDefaultValue(value: ConfigValue | undefined): string {
+  if (isString(value)) {
     return value;
   }
-  if (typeof value === "object" && value !== null) {
+  if (isConfigObject(value) || Array.isArray(value) || value instanceof Date) {
     return JSON.stringify(value) ?? String(value);
   }
   return String(value);

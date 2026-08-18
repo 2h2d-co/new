@@ -14,16 +14,25 @@ import {
   formatTemplateHelp,
   formatTemplateList,
   interpolateMustache,
-  isRecord,
+  isBoolean,
+  isConfigObject,
+  isString,
+  parseConfigObject,
   parseCliArgs,
   parseGithubVisibility,
+  type ConfigObject,
+  type ConfigValue,
   type GithubVisibility,
+  type RenderData,
+  type RenderValue,
+  type StringValues,
   type TemplateCommand,
   type TemplateConfig,
   type TemplateGithubConfig,
   type TemplateNpmConfig,
   type TemplateVariable,
   type TemplateVariableChoice,
+  type TemplateVariableChoiceDetails,
   type UserConfig,
 } from "./core.ts";
 
@@ -43,11 +52,11 @@ type TemplateSummary = {
 };
 
 type SystemInfo = {
-  git: Record<string, string>;
-  github: Record<string, string>;
-  npm: Record<string, string>;
+  git: StringValues;
+  github: StringValues;
+  npm: StringValues;
   config: UserConfig;
-  defaults: Record<string, unknown>;
+  defaults: ConfigObject;
 };
 
 type GithubCreateOptions = {
@@ -60,6 +69,8 @@ type GithubCreateOptions = {
 type NpmPackagePlan = TemplateNpmConfig & {
   publish: boolean;
 };
+
+type TemplateVariableType = NonNullable<TemplateVariable["type"]>;
 
 async function main(): Promise<void> {
   const cli = parseCliArgs(process.argv.slice(2));
@@ -188,23 +199,22 @@ async function loadUserConfig(): Promise<UserConfig> {
   }
 
   const raw = parseToml(await readFile(configPath, "utf8"));
-  if (!isRecord(raw)) {
-    throw new Error(`Invalid config file: ${configPath}`);
-  }
 
   const config: UserConfig = {};
-  if (typeof raw["template_source"] === "string") {
+  if (isString(raw["template_source"])) {
     config.template_source = raw["template_source"];
   }
-  if (isRecord(raw["defaults"])) {
-    config.defaults = { ...raw["defaults"] };
+  if (isConfigObject(raw["defaults"])) {
+    const defaults: ConfigObject = {};
+    Object.assign(defaults, raw["defaults"]);
+    config.defaults = defaults;
   }
-  if (isRecord(raw["github"])) {
+  if (isConfigObject(raw["github"])) {
     const github: NonNullable<UserConfig["github"]> = {};
-    if (typeof raw["github"]["owner"] === "string") {
+    if (isString(raw["github"]["owner"])) {
       github.owner = raw["github"]["owner"];
     }
-    if (typeof raw["github"]["visibility"] === "string") {
+    if (isString(raw["github"]["visibility"])) {
       github.visibility = parseGithubVisibility(raw["github"]["visibility"]);
     }
     config.github = github;
@@ -214,9 +224,9 @@ async function loadUserConfig(): Promise<UserConfig> {
 }
 
 async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
-  const git: Record<string, string> = {};
-  const github: Record<string, string> = {};
-  const npm: Record<string, string> = {};
+  const git: StringValues = {};
+  const github: StringValues = {};
+  const npm: StringValues = {};
 
   assignIfPresent(git, "name", await commandOutput("git", ["config", "user.name"]));
   assignIfPresent(git, "email", await commandOutput("git", ["config", "user.email"]));
@@ -247,7 +257,8 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
     await commandOutput("gh", ["api", "user", "--jq", ".email // empty"]),
   );
 
-  const defaults: Record<string, unknown> = { ...config.defaults };
+  const defaults: ConfigObject = {};
+  Object.assign(defaults, config.defaults);
   const authorName = firstString(
     defaults["authorName"],
     npm["authorName"],
@@ -375,12 +386,10 @@ async function loadTemplateConfig(templateDir: string): Promise<TemplateConfig> 
     throw new Error(`Template is missing template.toml or template.json: ${templateDir}`);
   }
 
-  const raw = configPath.endsWith(".json")
-    ? JSON.parse(await readFile(configPath, "utf8"))
-    : parseToml(await readFile(configPath, "utf8"));
-  if (!isRecord(raw)) {
-    throw new Error(`Invalid template config: ${configPath}`);
-  }
+  const contents = await readFile(configPath, "utf8");
+  const raw: ConfigObject = configPath.endsWith(".json")
+    ? parseConfigObject(contents, configPath)
+    : parseToml(contents);
   const filesPath = join(templateDir, "files");
   if (!(await directoryExists(filesPath))) {
     throw new Error(`Template is missing files directory: ${templateDir}`);
@@ -400,12 +409,12 @@ async function templateConfigPath(templateDir: string): Promise<string | undefin
   return undefined;
 }
 
-function normalizeTemplateConfig(raw: Record<string, unknown>, configPath: string): TemplateConfig {
+function normalizeTemplateConfig(raw: ConfigObject, configPath: string): TemplateConfig {
   const config: TemplateConfig = {};
-  if (typeof raw["name"] === "string") {
+  if (isString(raw["name"])) {
     config.name = raw["name"];
   }
-  if (typeof raw["description"] === "string") {
+  if (isString(raw["description"])) {
     config.description = raw["description"];
   }
   if (raw["variables"] !== undefined) {
@@ -433,8 +442,11 @@ function normalizeTemplateConfig(raw: Record<string, unknown>, configPath: strin
   return config;
 }
 
-function normalizeTemplateGithubConfig(entry: unknown, configPath: string): TemplateGithubConfig {
-  if (!isRecord(entry)) {
+function normalizeTemplateGithubConfig(
+  entry: ConfigValue,
+  configPath: string,
+): TemplateGithubConfig {
+  if (!isConfigObject(entry)) {
     throw new Error(`Template GitHub configuration must be an object in ${configPath}`);
   }
 
@@ -448,8 +460,8 @@ function normalizeTemplateGithubConfig(entry: unknown, configPath: string): Temp
   };
 }
 
-function normalizeTemplateNpmConfig(entry: unknown, configPath: string): TemplateNpmConfig {
-  if (!isRecord(entry)) {
+function normalizeTemplateNpmConfig(entry: ConfigValue, configPath: string): TemplateNpmConfig {
+  if (!isConfigObject(entry)) {
     throw new Error(`Template npm configuration must be an object in ${configPath}`);
   }
 
@@ -467,42 +479,45 @@ function normalizeTemplateNpmConfig(entry: unknown, configPath: string): Templat
 }
 
 function requiredConfigString(
-  entry: Record<string, unknown>,
+  entry: ConfigObject,
   key: string,
   label: string,
   configPath: string,
 ): string {
   const value = entry[key];
-  if (typeof value !== "string" || value.length === 0) {
+  if (!isString(value) || value.length === 0) {
     throw new Error(`Template ${label} must be a non-empty string in ${configPath}`);
   }
   return value;
 }
 
 function normalizeTemplateVariable(
-  entry: unknown,
+  entry: ConfigValue,
   index: number,
   configPath: string,
 ): TemplateVariable {
-  if (!isRecord(entry) || typeof entry["name"] !== "string") {
+  if (!isConfigObject(entry) || !isString(entry["name"])) {
     throw new Error(`Template variable at index ${index} in ${configPath} must have a string name`);
   }
   const variable: TemplateVariable = { name: entry["name"] };
   if (entry["type"] !== undefined) {
-    if (!["string", "boolean", "select", "number", "path"].includes(String(entry["type"]))) {
+    if (!isTemplateVariableType(entry["type"])) {
       throw new Error(
         `Unsupported variable type for ${entry["name"]} in ${configPath}: ${String(entry["type"])}`,
       );
     }
-    variable.type = entry["type"] as NonNullable<TemplateVariable["type"]>;
+    variable.type = entry["type"];
   }
-  if (typeof entry["prompt"] === "string") {
+  if (isString(entry["prompt"])) {
     variable.prompt = entry["prompt"];
   }
   if (Object.hasOwn(entry, "default")) {
-    variable.default = entry["default"];
+    const defaultValue = entry["default"];
+    if (defaultValue !== undefined) {
+      variable.default = defaultValue;
+    }
   }
-  if (typeof entry["required"] === "boolean") {
+  if (isBoolean(entry["required"])) {
     variable.required = entry["required"];
   }
   if (entry["choices"] !== undefined) {
@@ -517,17 +532,17 @@ function normalizeTemplateVariable(
 }
 
 function normalizeChoice(
-  choice: unknown,
+  choice: ConfigValue,
   variableName: string,
   index: number,
   configPath: string,
 ): TemplateVariableChoice {
-  if (typeof choice === "string") {
+  if (isString(choice)) {
     return choice;
   }
-  if (isRecord(choice) && typeof choice["value"] === "string") {
-    const normalized: { name?: string; value: string } = { value: choice["value"] };
-    if (typeof choice["name"] === "string") {
+  if (isConfigObject(choice) && isString(choice["value"])) {
+    const normalized: TemplateVariableChoiceDetails = { value: choice["value"] };
+    if (isString(choice["name"])) {
       normalized.name = choice["name"];
     }
     return normalized;
@@ -538,20 +553,24 @@ function normalizeChoice(
 }
 
 function normalizeTemplateCommand(
-  entry: unknown,
+  entry: ConfigValue,
   index: number,
   configPath: string,
 ): TemplateCommand {
-  if (!isRecord(entry) || typeof entry["run"] !== "string") {
+  if (!isConfigObject(entry) || !isString(entry["run"])) {
     throw new Error(
       `Template command at index ${index} in ${configPath} must have a string run value`,
     );
   }
   const command: TemplateCommand = { run: entry["run"] };
-  if (typeof entry["name"] === "string") {
+  if (isString(entry["name"])) {
     command.name = entry["name"];
   }
   return command;
+}
+
+function isTemplateVariableType(value: ConfigValue): value is TemplateVariableType {
+  return isString(value) && ["string", "boolean", "select", "number", "path"].includes(value);
 }
 
 async function resolveTemplateId(
@@ -626,8 +645,8 @@ async function collectTemplateVariables(
   system: SystemInfo,
   variableFlags: Record<string, string | boolean>,
   yes: boolean,
-): Promise<Record<string, unknown>> {
-  const values: Record<string, unknown> = {
+): Promise<ConfigObject> {
+  const values: ConfigObject = {
     projectName,
     repoName: projectName,
   };
@@ -664,16 +683,16 @@ async function collectTemplateVariables(
 
 function resolveVariableDefault(
   variable: TemplateVariable,
-  context: Record<string, unknown>,
+  context: RenderData,
   system: SystemInfo,
-): unknown {
+): ConfigValue | undefined {
   if (Object.hasOwn(variable, "default")) {
-    return typeof variable.default === "string"
+    return isString(variable.default)
       ? interpolateMustache(variable.default, context)
       : variable.default;
   }
   const configuredDefault = system.defaults[variable.name];
-  if (typeof configuredDefault === "string") {
+  if (isString(configuredDefault)) {
     return interpolateMustache(configuredDefault, context);
   }
   return configuredDefault;
@@ -681,7 +700,7 @@ function resolveVariableDefault(
 
 async function promptForVariable(
   variable: TemplateVariable,
-  defaultValue: unknown,
+  defaultValue: ConfigValue | undefined,
 ): Promise<string | boolean | number> {
   const type = variable.type ?? "string";
   const message = variable.prompt ?? variable.name;
@@ -697,7 +716,7 @@ async function promptForVariable(
     const choice = await select({
       message,
       choices: choices.map((item) => ({ name: choiceName(item), value: choiceValue(item) })),
-      default: typeof defaultValue === "string" ? defaultValue : undefined,
+      default: isString(defaultValue) ? defaultValue : undefined,
     });
     return coerceVariableValue(variable, choice);
   }
@@ -711,15 +730,40 @@ async function promptForVariable(
   return coerceVariableValue(variable, answer);
 }
 
-function createRenderData(
-  values: Record<string, unknown>,
-  system: SystemInfo,
-): Record<string, unknown> {
+function createRenderData(values: ConfigObject, system: SystemInfo) {
   return {
     ...values,
-    system,
-    json: (value: unknown) => JSON.stringify(value),
-  };
+    system: createSystemRenderData(system),
+    json: (value: RenderValue) => JSON.stringify(value),
+  } satisfies RenderData;
+}
+
+function createSystemRenderData(system: SystemInfo) {
+  const config: ConfigObject = {};
+  if (system.config.template_source !== undefined) {
+    config["template_source"] = system.config.template_source;
+  }
+  if (system.config.defaults !== undefined) {
+    config["defaults"] = system.config.defaults;
+  }
+  if (system.config.github !== undefined) {
+    const github: ConfigObject = {};
+    if (system.config.github.owner !== undefined) {
+      github["owner"] = system.config.github.owner;
+    }
+    if (system.config.github.visibility !== undefined) {
+      github["visibility"] = system.config.github.visibility;
+    }
+    config["github"] = github;
+  }
+
+  return {
+    git: system.git,
+    github: system.github,
+    npm: system.npm,
+    config,
+    defaults: system.defaults,
+  } satisfies ConfigObject;
 }
 
 async function confirmRemoteCommands(
@@ -745,7 +789,7 @@ async function confirmRemoteCommands(
 async function renderTemplate(
   templateFilesDir: string,
   targetDir: string,
-  data: Record<string, unknown>,
+  data: RenderData,
 ): Promise<void> {
   await mkdir(targetDir);
   const eta = new Eta({ autoEscape: false, autoTrim: false });
@@ -756,7 +800,7 @@ async function renderDirectory(
   rootDir: string,
   currentDir: string,
   targetDir: string,
-  data: Record<string, unknown>,
+  data: RenderData,
   eta: Eta,
 ): Promise<void> {
   const entries = await readdir(currentDir, { withFileTypes: true });
@@ -790,7 +834,7 @@ async function renderDirectory(
   }
 }
 
-function interpolatePath(relativePath: string, data: Record<string, unknown>): string {
+function interpolatePath(relativePath: string, data: RenderData): string {
   return relativePath
     .split("/")
     .map((part) => interpolateMustache(part, data))
@@ -809,7 +853,7 @@ function safeDestination(targetDir: string, renderedRelative: string): string {
 async function runTemplateCommands(
   commands: TemplateCommand[],
   targetDir: string,
-  data: Record<string, unknown>,
+  data: RenderData,
 ): Promise<void> {
   for (const command of commands) {
     const run = interpolateMustache(command.run, data);
@@ -847,7 +891,7 @@ async function resolveGithubOptions(
   ownerOption: string | undefined,
   repoOption: string | undefined,
   visibilityOption: GithubVisibility | undefined,
-  variables: Record<string, unknown>,
+  variables: ConfigObject,
   system: SystemInfo,
 ): Promise<GithubCreateOptions | undefined> {
   if (!githubEnabled) {
@@ -936,7 +980,7 @@ async function configureGithubReleaseControls(
   targetDir: string,
   options: GithubCreateOptions,
   config: TemplateGithubConfig,
-  data: Record<string, unknown>,
+  data: RenderData,
 ): Promise<void> {
   const repository = `${options.owner}/${options.repo}`;
   const releaseEnvironment = interpolateMustache(config.releaseEnvironment, data).trim();
@@ -1023,7 +1067,7 @@ async function configureGithubReleaseControls(
 async function runGithubApi(
   method: "POST" | "PUT",
   path: string,
-  body: Record<string, unknown>,
+  body: ConfigObject,
   cwd: string,
 ): Promise<void> {
   await runProcess(
@@ -1036,7 +1080,7 @@ async function runGithubApi(
 
 function resolveNpmPackagePlan(
   config: TemplateNpmConfig | undefined,
-  data: Record<string, unknown>,
+  data: RenderData,
   publish: boolean,
 ): NpmPackagePlan | undefined {
   if (config === undefined) {
@@ -1052,11 +1096,7 @@ function resolveNpmPackagePlan(
   };
 }
 
-function interpolateRequiredNpmValue(
-  label: string,
-  value: string,
-  data: Record<string, unknown>,
-): string {
+function interpolateRequiredNpmValue(label: string, value: string, data: RenderData): string {
   const rendered = interpolateMustache(value, data).trim();
   if (rendered.length === 0) {
     throw new Error(`Rendered npm ${label} is empty`);
@@ -1109,18 +1149,15 @@ async function verifyRenderedPackageIdentity(
   plan: NpmPackagePlan,
 ): Promise<void> {
   const packageJsonPath = join(targetDir, "package.json");
-  let parsed: unknown;
+  let parsed: ConfigObject;
   try {
-    parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
+    parsed = parseConfigObject(await readFile(packageJsonPath, "utf8"), packageJsonPath);
   } catch (error) {
     throw new Error(
       `Could not read rendered package manifest ${packageJsonPath}: ${String(error)}`,
     );
   }
 
-  if (!isRecord(parsed)) {
-    throw new Error(`Rendered package manifest is not an object: ${packageJsonPath}`);
-  }
   if (parsed["name"] !== plan.packageName) {
     throw new Error(
       `Rendered package name ${JSON.stringify(parsed["name"])} does not match configured npm package ${JSON.stringify(plan.packageName)}`,
@@ -1139,16 +1176,23 @@ function isNpmNotFoundError(error: unknown): boolean {
 }
 
 function commandFailureMessage(error: unknown): string {
-  if (!isRecord(error)) {
+  if (!isCommandFailure(error)) {
     return String(error);
   }
 
-  const stderr = error["stderr"];
-  if (typeof stderr === "string" && stderr.trim().length > 0) {
-    return stderr.trim();
+  if (isString(error.stderr) && error.stderr.trim().length > 0) {
+    return error.stderr.trim();
   }
-  const message = error["message"];
-  return typeof message === "string" && message.length > 0 ? message : String(error);
+  return isString(error.message) && error.message.length > 0 ? error.message : String(error);
+}
+
+type CommandFailure = {
+  message?: unknown;
+  stderr?: unknown;
+};
+
+function isCommandFailure(value: unknown): value is CommandFailure {
+  return typeof value === "object" && value !== null;
 }
 
 async function ensureGhAuthenticated(): Promise<void> {
@@ -1265,21 +1309,13 @@ function isGithubSlug(source: string): boolean {
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source);
 }
 
-function assignIfPresent(
-  target: Record<string, string>,
-  key: string,
-  value: string | undefined,
-): void {
+function assignIfPresent(target: StringValues, key: string, value: string | undefined): void {
   if (value !== undefined && value.length > 0) {
     target[key] = value;
   }
 }
 
-function assignDefault(
-  target: Record<string, unknown>,
-  key: string,
-  value: string | undefined,
-): void {
+function assignDefault(target: ConfigObject, key: string, value: string | undefined): void {
   if (target[key] === undefined && value !== undefined && value.length > 0) {
     target[key] = value;
   }
@@ -1287,19 +1323,23 @@ function assignDefault(
 
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
-    if (typeof value === "string" && value.length > 0) {
+    if (isNonEmptyString(value)) {
       return value;
     }
   }
   return undefined;
 }
 
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+function stringValue(value: ConfigValue | undefined): string | undefined {
+  return isNonEmptyString(value) ? value : undefined;
 }
 
-function isMissing(value: unknown): boolean {
-  return value === undefined || value === null || (typeof value === "string" && value.length === 0);
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isMissing(value: ConfigValue | undefined): boolean {
+  return value === undefined || value === null || (isString(value) && value.length === 0);
 }
 
 function withOptionalDescription(
@@ -1338,8 +1378,11 @@ Template variables can be passed as kebab-case flags, for example:
 
 function printVersion(): void {
   const require = createRequire(import.meta.url);
-  const packageJson = require("../package.json") as { version?: string };
-  console.log(packageJson.version ?? "0.0.0");
+  const packageJson: unknown = require("../package.json");
+  if (!isConfigObject(packageJson)) {
+    throw new Error("Invalid package.json");
+  }
+  console.log(stringValue(packageJson["version"]) ?? "0.0.0");
 }
 
 void main().catch((error: unknown) => {

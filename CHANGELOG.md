@@ -7,6 +7,10 @@
 - Let templates automatically apply shared branch, release-tag, and release-environment controls
   after creating a GitHub repository.
 
+### Changed
+
+- Adopt the shared 2h2d Oxlint policy, including the blanket ban on non-const type assertions.
+
 ### Fixed
 
 - Pass the staged package archive as an absolute path so npm treats it as a local tarball.

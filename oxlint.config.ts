@@ -1,0 +1,26 @@
+import { strictRules } from "@2h2d/oxlint-config/strict-rules";
+import { defineConfig } from "oxlint";
+
+export default defineConfig({
+  plugins: ["typescript", "unicorn", "oxc"],
+  jsPlugins: [
+    {
+      name: "2h2d",
+      specifier: "@2h2d/oxlint-config/plugin",
+    },
+  ],
+  categories: {
+    correctness: "error",
+  },
+  rules: {
+    ...strictRules,
+    "typescript/no-base-to-string": "off",
+  },
+  env: {
+    builtin: true,
+  },
+  options: {
+    typeAware: true,
+    typeCheck: true,
+  },
+});

@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { isRecord } from "../src/core.ts";
+import { isConfigObject, isString, parseConfigObject, type ConfigObject } from "../src/core.ts";
 
 const execFile = promisify(execFileCallback);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -542,7 +542,13 @@ async function readFakeNpmLog(logPath: string): Promise<FakeNpmLogEntry[]> {
     .trim()
     .split("\n")
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as FakeNpmLogEntry);
+    .map((line) => {
+      const parsed: unknown = JSON.parse(line);
+      if (!isFakeNpmLogEntry(parsed)) {
+        throw new Error("Invalid fake npm log entry");
+      }
+      return parsed;
+    });
 }
 
 async function readFakeGhLog(logPath: string): Promise<FakeGhLogEntry[]> {
@@ -560,23 +566,28 @@ async function readFakeGhLog(logPath: string): Promise<FakeGhLogEntry[]> {
     });
 }
 
-function parseFakeGhInput(entry: FakeGhLogEntry | undefined): Record<string, unknown> {
+function parseFakeGhInput(entry: FakeGhLogEntry | undefined): ConfigObject {
   if (entry === undefined) {
     throw new Error("Missing fake GitHub operation");
   }
-  const parsed: unknown = JSON.parse(entry.input);
-  if (!isRecord(parsed)) {
-    throw new Error("Fake GitHub input is not an object");
-  }
-  return parsed;
+  return parseConfigObject(entry.input, "fake GitHub input");
+}
+
+function isFakeNpmLogEntry(value: unknown): value is FakeNpmLogEntry {
+  return (
+    isConfigObject(value) &&
+    Array.isArray(value["args"]) &&
+    value["args"].every(isString) &&
+    isString(value["cwd"])
+  );
 }
 
 function isFakeGhLogEntry(value: unknown): value is FakeGhLogEntry {
   return (
-    isRecord(value) &&
+    isConfigObject(value) &&
     Array.isArray(value["args"]) &&
-    value["args"].every((argument) => typeof argument === "string") &&
-    typeof value["cwd"] === "string" &&
-    typeof value["input"] === "string"
+    value["args"].every(isString) &&
+    isString(value["cwd"]) &&
+    isString(value["input"])
   );
 }
