@@ -12,7 +12,7 @@ import { isConfigObject, isString, parseConfigObject, type ConfigObject } from "
 const execFile = promisify(execFileCallback);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-void test("Eta rendering preserves newlines after interpolation tags", async () => {
+test("Eta rendering preserves newlines after interpolation tags", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const templateDir = join(templateSource, "eta-whitespace");
@@ -63,7 +63,7 @@ void test("Eta rendering preserves newlines after interpolation tags", async () 
   }
 });
 
-void test("npm templates validate, authenticate, and publish the initial package", async () => {
+test("npm templates validate, authenticate, and publish the initial package", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const targetDir = join(root, "generated-package");
@@ -108,7 +108,7 @@ void test("npm templates validate, authenticate, and publish the initial package
   }
 });
 
-void test("npm templates reject an occupied package name before scaffolding", async () => {
+test("npm templates reject an occupied package name before scaffolding", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const targetDir = join(root, "occupied-package");
@@ -150,7 +150,7 @@ void test("npm templates reject an occupied package name before scaffolding", as
   }
 });
 
-void test("--no-npm-publish keeps availability validation but skips authentication and publish", async () => {
+test("--no-npm-publish keeps availability validation but skips authentication and publish", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const fakeNpm = await createFakeNpm(root);
@@ -188,7 +188,7 @@ void test("--no-npm-publish keeps availability validation but skips authenticati
   }
 });
 
-void test("template commands run inside the initialized Git repository", async () => {
+test("template commands run inside the initialized Git repository", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const templateDir = join(templateSource, "git-aware");
@@ -255,7 +255,7 @@ void test("template commands run inside the initialized Git repository", async (
   }
 });
 
-void test("template GitHub configuration applies release controls after repository creation", async () => {
+test("template GitHub configuration applies release controls after repository creation", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const templateSource = join(root, "templates");
   const templateDir = join(templateSource, "github-controls");

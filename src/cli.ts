@@ -1402,7 +1402,7 @@ function printVersion(): void {
 }
 
 // oxlint-disable-next-line 2h2d/no-silent-error-suppression -- The CLI boundary renders failures and converts them to process exit codes.
-void main().catch((error: unknown) => {
+main().catch((error: unknown) => {
   if (error instanceof Error && error.name === "ExitPromptError") {
     console.error("new: Cancelled by user (Ctrl+C).");
     process.exitCode = 130;
