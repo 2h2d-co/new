@@ -7,6 +7,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { isRecord } from "../src/core.ts";
+
 const execFile = promisify(execFileCallback);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -253,6 +255,115 @@ void test("template commands run inside the initialized Git repository", async (
   }
 });
 
+void test("template GitHub configuration applies release controls after repository creation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
+  const templateSource = join(root, "templates");
+  const templateDir = join(templateSource, "github-controls");
+  const targetDir = join(root, "generated-project");
+  const fakeGh = await createFakeGh(root);
+
+  try {
+    await mkdir(join(templateDir, "files"), { recursive: true });
+    await writeFile(join(templateSource, "new.toml"), 'name = "Test templates"\n');
+    await writeFile(
+      join(templateDir, "template.toml"),
+      [
+        'name = "GitHub controls"',
+        "",
+        "[[variables]]",
+        'name = "githubOwner"',
+        'default = "2h2d-co"',
+        "",
+        "[[variables]]",
+        'name = "repoName"',
+        'default = "generated-project"',
+        "",
+        "[github]",
+        'release_environment = "npm-publish"',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(templateDir, "files", "README.md"), "# Generated project\n");
+
+    await execFile(
+      process.execPath,
+      [
+        join(projectRoot, "src", "cli.ts"),
+        "github-controls",
+        "generated-project",
+        "--template-source",
+        templateSource,
+        "--yes",
+      ],
+      {
+        cwd: root,
+        env: {
+          ...gitIdentityEnv(root),
+          FAKE_GH_LOG: fakeGh.logPath,
+          PATH: `${fakeGh.binDir}:${process.env["PATH"] ?? ""}`,
+        },
+      },
+    );
+
+    const operations = (await readFakeGhLog(fakeGh.logPath)).filter(
+      (entry) =>
+        entry.args[0] === "repo" ||
+        (entry.args[0] === "api" && entry.args[3]?.startsWith("repos/2h2d-co/")),
+    );
+    assert.deepEqual(
+      operations.map((entry) => entry.args.slice(0, 4)),
+      [
+        ["repo", "create", "2h2d-co/generated-project", "--public"],
+        ["api", "--method", "PUT", "repos/2h2d-co/generated-project/branches/main/protection"],
+        ["api", "--method", "POST", "repos/2h2d-co/generated-project/rulesets"],
+        ["api", "--method", "PUT", "repos/2h2d-co/generated-project/environments/npm-publish"],
+        [
+          "api",
+          "--method",
+          "POST",
+          "repos/2h2d-co/generated-project/environments/npm-publish/deployment-branch-policies",
+        ],
+      ],
+    );
+
+    const branchProtection = parseFakeGhInput(operations[1]);
+    assert.deepEqual(branchProtection["required_pull_request_reviews"], {
+      dismissal_restrictions: {},
+      dismiss_stale_reviews: true,
+      require_code_owner_reviews: true,
+      require_last_push_approval: false,
+      required_approving_review_count: 1,
+    });
+    assert.equal(branchProtection["enforce_admins"], false);
+    assert.equal(branchProtection["required_linear_history"], true);
+    assert.equal(branchProtection["allow_force_pushes"], false);
+    assert.equal(branchProtection["allow_deletions"], false);
+    assert.equal(branchProtection["required_conversation_resolution"], true);
+
+    const tagRuleset = parseFakeGhInput(operations[2]);
+    assert.equal(tagRuleset["target"], "tag");
+    assert.deepEqual(tagRuleset["rules"], [
+      { type: "creation" },
+      { type: "update" },
+      { type: "deletion" },
+    ]);
+
+    const environment = parseFakeGhInput(operations[3]);
+    assert.equal(environment["can_admins_bypass"], false);
+    assert.deepEqual(environment["reviewers"], []);
+
+    const environmentPolicy = parseFakeGhInput(operations[4]);
+    assert.deepEqual(environmentPolicy, { name: "v*", type: "tag" });
+
+    const { stdout: status } = await execFile("git", ["status", "--porcelain"], {
+      cwd: targetDir,
+    });
+    assert.equal(status, "");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function gitIdentityEnv(root: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -273,6 +384,17 @@ type FakeNpm = {
 type FakeNpmLogEntry = {
   args: string[];
   cwd: string;
+};
+
+type FakeGh = {
+  binDir: string;
+  logPath: string;
+};
+
+type FakeGhLogEntry = {
+  args: string[];
+  cwd: string;
+  input: string;
 };
 
 async function createNpmTemplate(templateSource: string): Promise<void> {
@@ -352,6 +474,31 @@ async function createFakeNpm(root: string): Promise<FakeNpm> {
   return { authPath, binDir, logPath };
 }
 
+async function createFakeGh(root: string): Promise<FakeGh> {
+  const binDir = join(root, "fake-gh-bin");
+  const logPath = join(root, "gh.log");
+  const ghPath = join(binDir, "gh");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(
+    ghPath,
+    [
+      "#!/usr/bin/env node",
+      'const { appendFileSync, readFileSync } = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      'const input = args.includes("--input") ? readFileSync(0, "utf8") : "";',
+      "appendFileSync(",
+      "  process.env.FAKE_GH_LOG,",
+      "  `${JSON.stringify({ args, cwd: process.cwd(), input })}\\n`,",
+      ");",
+      'if (args[0] === "api" && args[1] === "user") console.log("test-user");',
+      "process.exit(0);",
+      "",
+    ].join("\n"),
+  );
+  await chmod(ghPath, 0o755);
+  return { binDir, logPath };
+}
+
 async function createFakeMise(root: string): Promise<{ binDir: string; logPath: string }> {
   const binDir = join(root, "fake-mise-bin");
   const logPath = join(root, "mise.log");
@@ -396,4 +543,40 @@ async function readFakeNpmLog(logPath: string): Promise<FakeNpmLogEntry[]> {
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as FakeNpmLogEntry);
+}
+
+async function readFakeGhLog(logPath: string): Promise<FakeGhLogEntry[]> {
+  const content = await readFile(logPath, "utf8");
+  return content
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const parsed: unknown = JSON.parse(line);
+      if (!isFakeGhLogEntry(parsed)) {
+        throw new Error("Invalid fake GitHub log entry");
+      }
+      return parsed;
+    });
+}
+
+function parseFakeGhInput(entry: FakeGhLogEntry | undefined): Record<string, unknown> {
+  if (entry === undefined) {
+    throw new Error("Missing fake GitHub operation");
+  }
+  const parsed: unknown = JSON.parse(entry.input);
+  if (!isRecord(parsed)) {
+    throw new Error("Fake GitHub input is not an object");
+  }
+  return parsed;
+}
+
+function isFakeGhLogEntry(value: unknown): value is FakeGhLogEntry {
+  return (
+    isRecord(value) &&
+    Array.isArray(value["args"]) &&
+    value["args"].every((argument) => typeof argument === "string") &&
+    typeof value["cwd"] === "string" &&
+    typeof value["input"] === "string"
+  );
 }

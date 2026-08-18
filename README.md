@@ -61,6 +61,25 @@ new ts-cli demo --description "Demo CLI" --author-name "Kaan"
 
 Variable defaults can use `{{ variable }}` interpolation and system defaults gathered from git, GitHub CLI, npm, and the global config.
 
+Templates can request the shared release protections after GitHub repository creation:
+
+```toml
+[github]
+release_environment = "npm-publish"
+```
+
+When GitHub creation is enabled, `new` then:
+
+- protects `main` with one code-owner approval, stale-review dismissal, conversation resolution,
+  linear history, and force-push/deletion blocking while retaining the administrator release path;
+- protects `v*` tags against creation, update, and deletion except by repository administrators;
+- creates the named release environment without required reviewers or administrator bypass;
+- restricts that environment to `v*` tags.
+
+`--no-github` skips both repository creation and these server-side controls. npm trusted publishing
+must still be connected to the repository, workflow, and environment after the initial package
+exists.
+
 ## Global config
 
 ```toml
@@ -113,8 +132,9 @@ Before creating the target directory, `new` checks the exact package name with `
 existing package stops creation. If npm authentication is unavailable, `new` runs `npm login` with
 inherited terminal input and waits for it to finish.
 
-After rendering, template commands, the initial Git commit, and optional GitHub repository
-creation, `new` verifies the rendered `package.json` name and version and runs:
+After rendering, template commands, the initial Git commit, optional GitHub repository creation,
+and declared GitHub release controls, `new` verifies the rendered `package.json` name and version
+and runs:
 
 ```bash
 npm publish --tag alpha --access public --allow-directory=all

@@ -20,6 +20,7 @@ import {
   type GithubVisibility,
   type TemplateCommand,
   type TemplateConfig,
+  type TemplateGithubConfig,
   type TemplateNpmConfig,
   type TemplateVariable,
   type TemplateVariableChoice,
@@ -169,6 +170,9 @@ async function main(): Promise<void> {
   );
   if (githubOptions) {
     await createGithubRepository(targetDir, githubOptions);
+    if (template.github !== undefined) {
+      await configureGithubReleaseControls(targetDir, githubOptions, template.github, renderData);
+    }
   }
   if (npmPackage?.publish === true) {
     await publishInitialNpmPackage(targetDir, npmPackage);
@@ -420,10 +424,28 @@ function normalizeTemplateConfig(raw: Record<string, unknown>, configPath: strin
       normalizeTemplateCommand(entry, index, configPath),
     );
   }
+  if (raw["github"] !== undefined) {
+    config.github = normalizeTemplateGithubConfig(raw["github"], configPath);
+  }
   if (raw["npm"] !== undefined) {
     config.npm = normalizeTemplateNpmConfig(raw["npm"], configPath);
   }
   return config;
+}
+
+function normalizeTemplateGithubConfig(entry: unknown, configPath: string): TemplateGithubConfig {
+  if (!isRecord(entry)) {
+    throw new Error(`Template GitHub configuration must be an object in ${configPath}`);
+  }
+
+  return {
+    releaseEnvironment: requiredConfigString(
+      entry,
+      "release_environment",
+      "GitHub release_environment",
+      configPath,
+    ),
+  };
 }
 
 function normalizeTemplateNpmConfig(entry: unknown, configPath: string): TemplateNpmConfig {
@@ -910,6 +932,108 @@ async function createGithubRepository(
   await runProcess("gh", args, targetDir);
 }
 
+async function configureGithubReleaseControls(
+  targetDir: string,
+  options: GithubCreateOptions,
+  config: TemplateGithubConfig,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const repository = `${options.owner}/${options.repo}`;
+  const releaseEnvironment = interpolateMustache(config.releaseEnvironment, data).trim();
+  if (releaseEnvironment.length === 0) {
+    throw new Error("Rendered GitHub release environment is empty");
+  }
+  const encodedEnvironment = encodeURIComponent(releaseEnvironment);
+
+  console.log("\n> Configure GitHub release controls");
+  await runGithubApi(
+    "PUT",
+    `repos/${repository}/branches/main/protection`,
+    {
+      required_status_checks: null,
+      enforce_admins: false,
+      required_pull_request_reviews: {
+        dismissal_restrictions: {},
+        dismiss_stale_reviews: true,
+        require_code_owner_reviews: true,
+        require_last_push_approval: false,
+        required_approving_review_count: 1,
+      },
+      restrictions: null,
+      required_linear_history: true,
+      allow_force_pushes: false,
+      allow_deletions: false,
+      block_creations: false,
+      required_conversation_resolution: true,
+      lock_branch: false,
+      allow_fork_syncing: false,
+    },
+    targetDir,
+  );
+  await runGithubApi(
+    "POST",
+    `repos/${repository}/rulesets`,
+    {
+      name: "Protect release tags",
+      target: "tag",
+      enforcement: "active",
+      bypass_actors: [
+        {
+          actor_id: 5,
+          actor_type: "RepositoryRole",
+          bypass_mode: "always",
+        },
+      ],
+      conditions: {
+        ref_name: {
+          exclude: [],
+          include: ["refs/tags/v*"],
+        },
+      },
+      rules: [{ type: "creation" }, { type: "update" }, { type: "deletion" }],
+    },
+    targetDir,
+  );
+  await runGithubApi(
+    "PUT",
+    `repos/${repository}/environments/${encodedEnvironment}`,
+    {
+      wait_timer: 0,
+      can_admins_bypass: false,
+      prevent_self_review: false,
+      reviewers: [],
+      deployment_branch_policy: {
+        protected_branches: false,
+        custom_branch_policies: true,
+      },
+    },
+    targetDir,
+  );
+  await runGithubApi(
+    "POST",
+    `repos/${repository}/environments/${encodedEnvironment}/deployment-branch-policies`,
+    {
+      name: "v*",
+      type: "tag",
+    },
+    targetDir,
+  );
+}
+
+async function runGithubApi(
+  method: "POST" | "PUT",
+  path: string,
+  body: Record<string, unknown>,
+  cwd: string,
+): Promise<void> {
+  await runProcess(
+    "gh",
+    ["api", "--method", method, path, "--input", "-"],
+    cwd,
+    `${JSON.stringify(body)}\n`,
+  );
+}
+
 function resolveNpmPackagePlan(
   config: TemplateNpmConfig | undefined,
   data: Record<string, unknown>,
@@ -1062,14 +1186,26 @@ async function runShell(command: string, cwd: string): Promise<void> {
   });
 }
 
-async function runProcess(command: string, args: string[], cwd: string): Promise<void> {
+async function runProcess(
+  command: string,
+  args: string[],
+  cwd: string,
+  input?: string,
+): Promise<void> {
   console.log(`$ ${[command, ...args].join(" ")}`);
   await new Promise<void>((resolvePromise, reject) => {
     const child = spawn(command, args, {
       cwd,
       env: process.env,
-      stdio: "inherit",
+      stdio: input === undefined ? "inherit" : ["pipe", "inherit", "inherit"],
     });
+    if (input !== undefined) {
+      if (child.stdin === null) {
+        reject(new Error(`Could not open stdin for ${command}`));
+        return;
+      }
+      child.stdin.end(input);
+    }
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (code === 0) {

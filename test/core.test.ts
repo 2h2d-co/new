@@ -119,6 +119,9 @@ void test("formatTemplateHelp renders variable flags, defaults, and commands", (
       { name: "items", prompt: "Items", default: ["a", "b"] },
     ],
     commands: [{ name: "Install", run: "npm install" }, { run: "npm test" }],
+    github: {
+      releaseEnvironment: "npm-publish",
+    },
     npm: {
       packageName: "{{ packageName }}",
       version: "0.0.1-alpha.0",
@@ -145,6 +148,8 @@ void test("formatTemplateHelp renders variable flags, defaults, and commands", (
   assert.match(output, /Commands:\n  Install: npm install\n  npm test/);
   assert.match(output, /npm:\n  Validate package name: {{ packageName }}/);
   assert.match(output, /Initial publish: 0\.0\.1-alpha\.0 \(tag: alpha, access: public\)/);
+  assert.match(output, /GitHub:\n  Protect main and v\* release tags/);
+  assert.match(output, /Restrict release environment: npm-publish/);
   assert.match(output, /Variables without a declared default may be filled from git, npm, gh/);
 });
 

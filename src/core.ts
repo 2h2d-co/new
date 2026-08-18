@@ -44,11 +44,16 @@ export type TemplateNpmConfig = {
   access: NpmAccess;
 };
 
+export type TemplateGithubConfig = {
+  releaseEnvironment: string;
+};
+
 export type TemplateConfig = {
   name?: string;
   description?: string;
   variables?: TemplateVariable[];
   commands?: TemplateCommand[];
+  github?: TemplateGithubConfig;
   npm?: TemplateNpmConfig;
 };
 
@@ -257,6 +262,15 @@ export function formatTemplateHelp(templateId: string, config: TemplateConfig): 
       "npm:",
       `  Validate package name: ${config.npm.packageName}`,
       `  Initial publish: ${config.npm.version} (tag: ${config.npm.tag}, access: ${config.npm.access})`,
+    );
+  }
+
+  if (config.github !== undefined) {
+    lines.push(
+      "",
+      "GitHub:",
+      "  Protect main and v* release tags after repository creation",
+      `  Restrict release environment: ${config.github.releaseEnvironment}`,
     );
   }
 

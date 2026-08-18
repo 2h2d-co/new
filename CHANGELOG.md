@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Let templates automatically apply shared branch, release-tag, and release-environment controls
+  after creating a GitHub repository.
+
 ### Fixed
 
 - Pass the staged package archive as an absolute path so npm treats it as a local tarball.

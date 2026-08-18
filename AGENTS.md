@@ -32,6 +32,7 @@
 - `.eta` files render with Eta using `autoEscape: false` and strip the `.eta` suffix. Other files copy as-is. File and directory names, variable defaults, and command strings use simple `{{ dotted.path }}` interpolation.
 - Preserve `safeDestination` protections so rendered template paths cannot escape the target directory; add tests when changing path rendering or interpolation.
 - Template commands are shell commands run in the generated project after rendering and before git/GitHub setup. Remote template commands prompt for confirmation unless `--yes` is used.
+- A template `[github]` block declaratively requests the shared `main`, `v*` tag, and release-environment controls after repository creation; keep those controls aligned with the documented 2h2d release model.
 - Templates with an `[npm]` block validate package-name availability before rendering and publish the configured initial version after GitHub setup. Keep real registry publication out of tests; use a fake npm executable.
 - Generated projects are initialized as git repositories with an initial commit. GitHub repository creation uses authenticated `gh` unless disabled.
 
