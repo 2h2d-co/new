@@ -1410,7 +1410,6 @@ function printVersion(): void {
   console.log(stringValue(packageJson["version"]) ?? "0.0.0");
 }
 
-// oxlint-disable-next-line 2h2d/no-silent-error-suppression -- The CLI boundary renders failures and converts them to process exit codes.
 main().catch((error: unknown) => {
   if (error instanceof Error && error.name === "ExitPromptError") {
     console.error("new: Cancelled by user (Ctrl+C).");
