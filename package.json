@@ -44,7 +44,7 @@
   "dependencies": {
     "@inquirer/prompts": "8.5.2",
     "eta": "4.6.0",
-    "smol-toml": "1.7.1"
+    "smol-toml": "1.8.0"
   },
   "devDependencies": {
     "@2h2d/oxlint-config": "0.1.0-alpha.3",
