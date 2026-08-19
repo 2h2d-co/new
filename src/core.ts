@@ -322,7 +322,10 @@ export function interpolateMustache(input: string, context: RenderObject): strin
       if (value === undefined || value === null) {
         return "";
       }
-      return String(value);
+      if (!isConfigValue(value)) {
+        throw new Error(`Cannot interpolate non-data value: ${expression}`);
+      }
+      return formatConfigValue(value);
     },
   );
 }
@@ -371,7 +374,7 @@ export function coerceVariableValue(
     return numberValue;
   }
 
-  const stringValue = String(raw);
+  const stringValue = formatConfigValue(raw);
   if (type === "select") {
     const choices = variable.choices ?? [];
     if (choices.length === 0) {
@@ -440,6 +443,35 @@ export function isConfigObject(value: unknown): value is ConfigObject {
   );
 }
 
+export function formatConfigValue(value: ConfigValue): string {
+  if (isString(value)) {
+    return value;
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (isBoolean(value)) {
+    return value ? "true" : "false";
+  }
+  if (isNumber(value)) {
+    return `${value}`;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const serialized = JSON.stringify(value, (_key, nested: unknown) =>
+    typeof nested === "bigint" ? nested.toString() : nested,
+  );
+  if (serialized === undefined) {
+    throw new Error("Configuration value could not be serialized");
+  }
+  return serialized;
+}
+
 export function isRenderObject(value: RenderValue): value is RenderObject {
   return (
     typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)
@@ -494,13 +526,7 @@ function formatVariableOption(variable: TemplateVariable): string {
 }
 
 function formatDefaultValue(value: ConfigValue | undefined): string {
-  if (isString(value)) {
-    return value;
-  }
-  if (isConfigObject(value) || Array.isArray(value) || value instanceof Date) {
-    return JSON.stringify(value) ?? String(value);
-  }
-  return String(value);
+  return value === undefined ? "undefined" : formatConfigValue(value);
 }
 
 function parseBooleanOption(name: string, value: string | undefined): boolean {

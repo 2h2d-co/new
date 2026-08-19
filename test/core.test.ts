@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   coerceVariableValue,
   flagToVariableName,
+  formatConfigValue,
   formatTemplateHelp,
   formatTemplateList,
   interpolateMustache,
@@ -64,6 +65,16 @@ test("interpolateMustache supports dotted paths", () => {
       system: { github: { login: "kaanozdokmeci" } },
     }),
     "github.com/kaanozdokmeci/demo",
+  );
+});
+
+test("configuration values use explicit stable string formatting", () => {
+  assert.equal(formatConfigValue({ count: 2n, enabled: true }), '{"count":"2","enabled":true}');
+  assert.equal(
+    interpolateMustache("settings={{ settings }}", {
+      settings: { count: 2n, enabled: true },
+    }),
+    'settings={"count":"2","enabled":true}',
   );
 });
 

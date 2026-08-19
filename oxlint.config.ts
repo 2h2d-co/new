@@ -12,10 +12,7 @@ export default defineConfig({
   categories: {
     correctness: "error",
   },
-  rules: {
-    ...strictRules,
-    "typescript/no-base-to-string": "off",
-  },
+  rules: strictRules,
   env: {
     builtin: true,
   },

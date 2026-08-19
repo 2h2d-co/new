@@ -11,6 +11,7 @@ import {
   choiceName,
   choiceValue,
   coerceVariableValue,
+  formatConfigValue,
   formatTemplateHelp,
   formatTemplateList,
   interpolateMustache,
@@ -205,9 +206,7 @@ async function loadUserConfig(): Promise<UserConfig> {
     config.template_source = raw["template_source"];
   }
   if (isConfigObject(raw["defaults"])) {
-    const defaults: ConfigObject = {};
-    Object.assign(defaults, raw["defaults"]);
-    config.defaults = defaults;
+    config.defaults = { ...raw["defaults"] };
   }
   if (isConfigObject(raw["github"])) {
     const github: NonNullable<UserConfig["github"]> = {};
@@ -257,8 +256,7 @@ async function collectSystemInfo(config: UserConfig): Promise<SystemInfo> {
     await commandOutput("gh", ["api", "user", "--jq", ".email // empty"]),
   );
 
-  const defaults: ConfigObject = {};
-  Object.assign(defaults, config.defaults);
+  const defaults = { ...config.defaults };
   const authorName = firstString(
     defaults["authorName"],
     npm["authorName"],
@@ -503,7 +501,7 @@ function normalizeTemplateVariable(
   if (entry["type"] !== undefined) {
     if (!isTemplateVariableType(entry["type"])) {
       throw new Error(
-        `Unsupported variable type for ${entry["name"]} in ${configPath}: ${String(entry["type"])}`,
+        `Unsupported variable type for ${entry["name"]} in ${configPath}: ${formatConfigValue(entry["type"])}`,
       );
     }
     variable.type = entry["type"];
@@ -723,7 +721,7 @@ async function promptForVariable(
 
   const answer = await input({
     message,
-    default: defaultValue === undefined ? undefined : String(defaultValue),
+    default: defaultValue === undefined ? undefined : formatConfigValue(defaultValue),
     validate: (value) =>
       variable.required !== true || value.length > 0 ? true : `${variable.name} is required`,
   });
@@ -1179,13 +1177,24 @@ function isNpmNotFoundError(error: unknown): boolean {
 
 function commandFailureMessage(error: unknown): string {
   if (!isCommandFailure(error)) {
-    return String(error);
+    if (isString(error)) {
+      return error;
+    }
+    if (typeof error === "bigint") {
+      return error.toString();
+    }
+    if (typeof error === "boolean" || typeof error === "number") {
+      return `${error}`;
+    }
+    return error === null ? "null" : "Unknown command failure";
   }
 
   if (isString(error.stderr) && error.stderr.trim().length > 0) {
     return error.stderr.trim();
   }
-  return isString(error.message) && error.message.length > 0 ? error.message : String(error);
+  return isString(error.message) && error.message.length > 0
+    ? error.message
+    : "Command failed without an error message";
 }
 
 type CommandFailure = {
