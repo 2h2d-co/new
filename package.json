@@ -42,7 +42,7 @@
     "lint:fix": "oxlint --fix"
   },
   "dependencies": {
-    "@inquirer/prompts": "8.6.0",
+    "@inquirer/prompts": "8.7.0",
     "eta": "4.6.0",
     "smol-toml": "1.8.0"
   },
