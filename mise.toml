@@ -17,3 +17,7 @@ _.path = ["{{config_root}}/node_modules/.bin"]
 
 [shell_alias]
 "new:local" = "node {{config_root}}/src/cli.ts"
+
+[tasks.check]
+description = "Run all non-writing project checks"
+run = ["npm run check", "npm test", "npm run pack:dry"]

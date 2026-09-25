@@ -16,7 +16,7 @@
 - Use `mise.toml` as the source of truth for development tool versions and mise lock settings.
 - Keep commands that are local to the Node/npm package in npm scripts, such as build, typecheck, test, format, and lint commands.
 - Mise tasks are appropriate for workflows that coordinate across different tools or package managers; when adding one, delegate npm-specific work to npm scripts instead of duplicating it.
-- `npm run check` runs the repository-wide hk quality gate; run it before committing meaningful code changes.
+- `mise run check` runs the repository-wide hk quality gate, the tests, and `npm run pack:dry`; run it before committing meaningful code changes.
 - `npm test` runs behavioral tests separately from the quality gate.
 - `npm run build` removes and rebuilds `dist/`, then ensures `bin/new.js` is executable.
 - `npm run pack:dry` builds and previews npm package contents; run it for changes to `bin/`, package metadata, published files, or build output.
