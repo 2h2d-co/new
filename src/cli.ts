@@ -193,13 +193,21 @@ async function main(): Promise<void> {
   console.log(`\nCreated ${projectName}`);
 }
 
+function parseTomlConfigObject(contents: string, label: string): ConfigObject {
+  const parsed: unknown = parseToml(contents);
+  if (!isConfigObject(parsed)) {
+    throw new Error(`Expected a configuration object: ${label}`);
+  }
+  return parsed;
+}
+
 async function loadUserConfig(): Promise<UserConfig> {
   const configPath = join(configHome(), "new", "config.toml");
   if (!(await pathExists(configPath))) {
     return {};
   }
 
-  const raw = parseToml(await readFile(configPath, "utf8"));
+  const raw = parseTomlConfigObject(await readFile(configPath, "utf8"), configPath);
 
   const config: UserConfig = {};
   if (isString(raw["template_source"])) {
@@ -387,7 +395,7 @@ async function loadTemplateConfig(templateDir: string): Promise<TemplateConfig> 
   const contents = await readFile(configPath, "utf8");
   const raw: ConfigObject = configPath.endsWith(".json")
     ? parseConfigObject(contents, configPath)
-    : parseToml(contents);
+    : parseTomlConfigObject(contents, configPath);
   const filesPath = join(templateDir, "files");
   if (!(await directoryExists(filesPath))) {
     throw new Error(`Template is missing files directory: ${templateDir}`);
@@ -714,7 +722,7 @@ async function promptForVariable(
     const choice = await select({
       message,
       choices: choices.map((item) => ({ name: choiceName(item), value: choiceValue(item) })),
-      default: isString(defaultValue) ? defaultValue : undefined,
+      ...(isString(defaultValue) ? { default: defaultValue } : {}),
     });
     return coerceVariableValue(variable, choice);
   }
