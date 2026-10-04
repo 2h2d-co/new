@@ -13,12 +13,13 @@ npm = "11.20.0"
 actionlint = "1.7.12"
 zizmor = "1.30.1"
 
-[env]
-_.path = ["{{config_root}}/node_modules/.bin"]
-
 [shell_alias]
 "new:local" = "node {{config_root}}/src/cli.ts"
 
 [tasks.check]
 description = "Run all non-writing project checks"
-run = ["npm run check", "npm test", "npm run pack:dry"]
+run = ["hk check --all --check", "npm test", "npm audit", "npm run pack:dry"]
+
+[tasks.init]
+description = "Install locked dependencies and Git hooks"
+run = ["npm ci --ignore-scripts", "hk install --mise"]

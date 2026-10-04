@@ -146,9 +146,8 @@ name availability is still validated.
 ## Local development
 
 ```bash
-npm install
-npm run check
-npm test
+mise run init
+mise run check
 npm run build
 npm run pack:dry
 npm run lint
