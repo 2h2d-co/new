@@ -50,7 +50,7 @@
     "@2h2d/ts-config": "0.0.1",
     "@types/node": "22.20.4",
     "oxfmt": "0.70.0",
-    "oxlint": "1.85.0",
+    "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2"
   },
