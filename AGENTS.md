@@ -18,6 +18,7 @@
 - Mise tasks are appropriate for workflows that coordinate across different tools or package managers; when adding one, delegate npm-specific work to npm scripts instead of duplicating it.
 - `mise run check` runs the repository-wide hk quality gate, the tests, and `npm run pack:dry`; run it before committing meaningful code changes.
 - `npm test` runs behavioral tests separately from the quality gate.
+- `npm run test:live` publishes a throwaway `@2h2d/new-live-test-<YYYYMMDDHHMM>` package through the packed CLI. Run it before every release that changes npm publication, then deprecate the package. npm's spam detection rejects unscoped throwaway names.
 - `npm run build` removes and rebuilds `dist/`, then ensures `bin/new.js` is executable.
 - `npm run pack:dry` builds and previews npm package contents; run it for changes to `bin/`, package metadata, published files, or build output.
 - Keep `.github/npm-package-files` synchronized with every intentional package-content change; local release validation and both CI jobs enforce it exactly.

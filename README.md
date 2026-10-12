@@ -163,6 +163,11 @@ npm run lint
 npm run fmt
 ```
 
+`npm run test:live` packs this checkout, installs the archive, and publishes a real, public throwaway
+package named `@2h2d/new-live-test-<YYYYMMDDHHMM>` through it. Run it from a macOS terminal session
+and approve npm's browser prompt. Set `NEW_PACKAGE_ARCHIVE` to an absolute archive path to test that
+archive instead. Deprecate the throwaway package afterward.
+
 ## Packaging
 
 This package publishes the executable shim, generated JavaScript, and project files explicitly:

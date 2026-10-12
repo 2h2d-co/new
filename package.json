@@ -34,6 +34,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x bin/new.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
+    "test:live": "NEW_LIVE_TEST=1 node --test --test-concurrency=1 test/cli.live.test.ts",
     "pack:dry": "npm run build && npm pack --dry-run --allow-directory=all",
     "release": "node scripts/release.ts",
     "fmt": "oxfmt",
