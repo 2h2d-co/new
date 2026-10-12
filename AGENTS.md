@@ -33,7 +33,7 @@
 - Preserve `safeDestination` protections so rendered template paths cannot escape the target directory; add tests when changing path rendering or interpolation.
 - Template commands are shell commands run in the generated project after rendering and before git/GitHub setup. Remote template commands prompt for confirmation unless `--yes` is used.
 - A template `[github]` block declaratively requests the shared `main`, `v*` tag, and release-environment controls after repository creation; keep those controls aligned with the documented 2h2d release model.
-- Templates with an `[npm]` block validate package-name availability before rendering and publish the configured initial version after GitHub setup. Keep real registry publication out of tests; use a fake npm executable.
+- Templates with an `[npm]` block validate package-name availability before rendering and publish the configured initial version after GitHub setup. Keep real registry publication out of tests; use fake `npm`, `script`, and `open` executables and the terminal preload. Never print npm login or publish output, because it contains one-time authentication links.
 - Generated projects are initialized as git repositories with an initial commit. GitHub repository creation uses authenticated `gh` unless disabled.
 
 ## Conventions

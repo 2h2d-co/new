@@ -128,17 +128,26 @@ tag = "alpha"
 access = "public"
 ```
 
-Before creating the target directory, `new` checks the exact package name with `npm view`. An
-existing package stops creation. If npm authentication is unavailable, `new` runs `npm login` with
-inherited terminal input and waits for it to finish.
+Initial publication requires a macOS terminal. Before creating the target directory, `new` checks
+the exact package name with `npm view`. An existing package stops creation. If `npm whoami` fails,
+`new` runs `npm login --auth-type=web`.
 
 After rendering, template commands, the initial Git commit, optional GitHub repository creation,
-and declared GitHub release controls, `new` verifies the rendered `package.json` name and version
-and runs:
+and declared GitHub release controls, `new` verifies the rendered `package.json` name and version.
+It packs the package and records the archive checksums, then runs:
 
 ```bash
 npm publish --tag alpha --access public --allow-directory=all
 ```
+
+npm login and publish run under macOS `script`, which gives npm a terminal. Their output stays in
+memory because it contains one-time authentication links. `new` opens each npm authentication link
+in the browser with `open` and prints only fixed status lines, exit codes, and npm error codes.
+Each command stops after five minutes.
+
+The registry decides the result, because an interrupted npm client can still have published. `new`
+checks the registry with `npm view` for up to five minutes. The published SHA-512 integrity and
+SHA-1 must match the packed archive, and the configured tag must point to the version.
 
 Initial publication is public and irreversible. Use `--no-npm-publish` to skip publication; package
 name availability is still validated.

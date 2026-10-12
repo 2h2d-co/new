@@ -1,10 +1,22 @@
 import { confirm, input, select } from "@inquirer/prompts";
 import { Eta } from "eta";
-import { copyFile, mkdir, readdir, readFile, stat, writeFile, chmod } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+  chmod,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { spawn, execFile as execFileCallback } from "node:child_process";
+import { spawn, spawnSync, execFile as execFileCallback } from "node:child_process";
 import { createRequire } from "node:module";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { parse as parseToml } from "smol-toml";
 import {
@@ -40,6 +52,16 @@ import {
 const execFile = promisify(execFileCallback);
 const TEMPLATE_SOURCE_ENV = "NEW_CLI_TEMPLATE_SOURCE";
 
+// npm login and publish print one-time authentication links. Keep their output in memory, open
+// the links in the browser, and print only fixed status lines and npm error codes. npm runs with
+// --color=false, so whitespace ends each link.
+const NPM_AUTH_URL = /https:\/\/www\.npmjs\.com\/(?:auth|login)(?:\/|\?)\S+(?=\s)/g;
+const NPM_OUTPUT_LIMIT = 1024 * 1024;
+const NPM_TERMINAL_TIMEOUT_MS = 300_000;
+// A new package's metadata can stay unavailable for over a minute after publication.
+const NPM_REGISTRY_ATTEMPTS = 60;
+const NPM_REGISTRY_INTERVAL_MS = 5_000;
+
 type TemplateSource = {
   path: string;
   source: string;
@@ -69,6 +91,17 @@ type GithubCreateOptions = {
 
 type NpmPackagePlan = TemplateNpmConfig & {
   publish: boolean;
+};
+
+type NpmTerminalResult = {
+  completed: boolean;
+  detail: string;
+};
+
+type PackedNpmArchive = {
+  integrity: string;
+  sha256: string;
+  shasum: string;
 };
 
 type TemplateVariableType = NonNullable<TemplateVariable["type"]>;
@@ -153,6 +186,9 @@ async function main(): Promise<void> {
 
   const npmPackage = resolveNpmPackagePlan(template.npm, renderData, cli.npmPublish);
   if (npmPackage !== undefined) {
+    if (npmPackage.publish) {
+      assertNpmPublishingSupported();
+    }
     await ensureNpmPackageAvailable(npmPackage.packageName);
     if (npmPackage.publish) {
       await ensureNpmAuthenticated(process.cwd());
@@ -1129,26 +1165,222 @@ async function ensureNpmPackageAvailable(packageName: string): Promise<void> {
   throw new Error(`npm package name is already taken: ${packageName}`);
 }
 
+function assertNpmPublishingSupported(): void {
+  // npm's browser authentication needs terminal stdin and stdout. macOS `script` provides them
+  // while new captures the output, and macOS `open` shows the links.
+  if (process.platform !== "darwin" || process.stdin.isTTY !== true) {
+    throw new Error(
+      "Initial npm publication requires a macOS terminal. Pass --no-npm-publish to skip it.",
+    );
+  }
+}
+
 async function ensureNpmAuthenticated(cwd: string): Promise<void> {
-  if ((await commandOutput("npm", ["whoami"])) !== undefined) {
+  if ((await commandOutput("npm", ["whoami", "--logs-max=0"])) !== undefined) {
     return;
   }
 
   console.log("\n> Authenticate with npm");
-  await runProcess("npm", ["login"], cwd);
+  const result = await runNpmInTerminal(["login", "--auth-type=web"], cwd);
+  if (!result.completed) {
+    throw new Error(`npm login did not complete (${result.detail}). Nothing was created.`);
+  }
 
-  if ((await commandOutput("npm", ["whoami"])) === undefined) {
+  if ((await commandOutput("npm", ["whoami", "--logs-max=0"])) === undefined) {
     throw new Error("npm login completed, but npm authentication could not be verified");
   }
+  console.log("npm authentication verified.");
 }
 
 async function publishInitialNpmPackage(targetDir: string, plan: NpmPackagePlan): Promise<void> {
-  console.log(`\n> Publish ${plan.packageName}@${plan.version} to npm`);
-  await runProcess(
-    "npm",
-    ["publish", "--tag", plan.tag, "--access", plan.access, "--allow-directory=all"],
-    targetDir,
+  const label = `${plan.packageName}@${plan.version}`;
+  console.log(`\n> Publish ${label} to npm`);
+  const packDir = await mkdtemp(join(tmpdir(), "new-npm-pack-"));
+  try {
+    const archive = await packInitialNpmPackage(targetDir, packDir, plan);
+    console.log(`Packed ${label} (sha256 ${archive.sha256}).`);
+
+    const result = await runNpmInTerminal(
+      ["publish", "--tag", plan.tag, "--access", plan.access, "--allow-directory=all"],
+      targetDir,
+    );
+    // An interrupted client can still have published, so the registry decides the result.
+    for (let attempt = 1; ; attempt += 1) {
+      if (await isInitialNpmPackagePublished(targetDir, plan, archive)) {
+        console.log(`Published ${label}: registry bytes and the ${plan.tag} tag match.`);
+        return;
+      }
+      if (!result.completed) {
+        throw new Error(
+          `npm publish did not complete (${result.detail}), and the registry does not show ${label}.`,
+        );
+      }
+      if (attempt >= NPM_REGISTRY_ATTEMPTS) {
+        throw new Error(
+          `npm publish completed, but the registry did not show ${label} within five minutes. Check the registry before retrying.`,
+        );
+      }
+      await delay(NPM_REGISTRY_INTERVAL_MS);
+    }
+  } finally {
+    await rm(packDir, { recursive: true, force: true });
+  }
+}
+
+async function packInitialNpmPackage(
+  targetDir: string,
+  packDir: string,
+  plan: NpmPackagePlan,
+): Promise<PackedNpmArchive> {
+  let stdout: string;
+  try {
+    ({ stdout } = await execFile(
+      "npm",
+      ["pack", "--json", "--pack-destination", packDir, "--allow-directory=all", "--logs-max=0"],
+      { cwd: targetDir, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+    ));
+  } catch (error) {
+    throw new Error(`npm pack failed: ${commandFailureMessage(error)}`, { cause: error });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (error) {
+    throw new Error("npm pack did not print its JSON result", { cause: error });
+  }
+  const entry: unknown = Array.isArray(parsed) && parsed.length === 1 ? parsed[0] : undefined;
+  if (
+    !isConfigObject(entry) ||
+    !isString(entry["filename"]) ||
+    entry["name"] !== plan.packageName ||
+    entry["version"] !== plan.version
+  ) {
+    throw new Error(`npm pack did not produce exactly ${plan.packageName}@${plan.version}`);
+  }
+
+  const contents = await readFile(join(packDir, entry["filename"]));
+  return {
+    integrity: `sha512-${createHash("sha512").update(contents).digest("base64")}`,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+    shasum: createHash("sha1").update(contents).digest("hex"),
+  };
+}
+
+async function isInitialNpmPackagePublished(
+  targetDir: string,
+  plan: NpmPackagePlan,
+  archive: PackedNpmArchive,
+): Promise<boolean> {
+  const label = `${plan.packageName}@${plan.version}`;
+  let stdout: string;
+  try {
+    ({ stdout } = await execFile(
+      "npm",
+      ["view", label, "dist", "dist-tags", "--json", "--logs-max=0"],
+      { cwd: targetDir, encoding: "utf8" },
+    ));
+  } catch (error) {
+    if (isNpmNotFoundError(error)) {
+      return false;
+    }
+    throw new Error(
+      `Could not read ${label} from the npm registry: ${commandFailureMessage(error)}`,
+      {
+        cause: error,
+      },
+    );
+  }
+  if (stdout.trim().length === 0) {
+    return false;
+  }
+
+  const view = parseConfigObject(stdout, `npm view ${label}`);
+  const dist = view["dist"];
+  if (
+    !isConfigObject(dist) ||
+    dist["integrity"] !== archive.integrity ||
+    dist["shasum"] !== archive.shasum
+  ) {
+    throw new Error(`The published ${label} differs from the packed archive.`);
+  }
+  const tags = view["dist-tags"];
+  if (!isConfigObject(tags) || tags[plan.tag] !== plan.version) {
+    throw new Error(
+      `The published ${label} matches the packed archive, but the ${plan.tag} tag does not point to it.`,
+    );
+  }
+  return true;
+}
+
+async function runNpmInTerminal(args: string[], cwd: string): Promise<NpmTerminalResult> {
+  const child = spawn(
+    "script",
+    ["-q", "/dev/null", "npm", ...args, "--color=false", "--logs-max=0"],
+    {
+      cwd,
+      env: process.env,
+      stdio: ["inherit", "pipe", "pipe"],
+    },
   );
+  let output = "";
+  let stopReason: string | undefined;
+  const opened = new Set<string>();
+  const stop = (reason: string): void => {
+    stopReason ??= reason;
+    child.kill("SIGTERM");
+  };
+  const interrupt = (): void => {
+    stop("interrupted");
+  };
+  const timer = setTimeout(() => {
+    stop("timed out after five minutes");
+  }, NPM_TERMINAL_TIMEOUT_MS);
+  const collect = (chunk: Buffer): void => {
+    output = (output + chunk.toString("utf8")).slice(-NPM_OUTPUT_LIMIT);
+    for (const [url] of output.matchAll(NPM_AUTH_URL)) {
+      if (opened.has(url)) {
+        continue;
+      }
+      opened.add(url);
+      if (spawnSync("open", [url], { stdio: "ignore" }).status !== 0) {
+        stop("the browser prompt could not be opened");
+        return;
+      }
+      console.log("Browser prompt opened. Complete npm authentication in the browser.");
+    }
+  };
+  child.stdout.on("data", collect);
+  child.stderr.on("data", collect);
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+
+  const exitCode = await new Promise<number | null>((resolvePromise) => {
+    child.once("error", () => {
+      resolvePromise(null);
+    });
+    child.once("close", (code) => {
+      resolvePromise(code);
+    });
+  });
+  clearTimeout(timer);
+  process.removeListener("SIGINT", interrupt);
+  process.removeListener("SIGTERM", interrupt);
+
+  if (stopReason !== undefined) {
+    return { completed: false, detail: stopReason };
+  }
+  if (exitCode === 0) {
+    return { completed: true, detail: "exit code 0" };
+  }
+  const codes = [
+    ...new Set([...output.matchAll(/npm error code ([A-Z0-9_]+)/g)].map((match) => match[1])),
+  ];
+  const status = exitCode === null ? "npm could not be started" : `exit code ${exitCode}`;
+  return {
+    completed: false,
+    detail: codes.length === 0 ? status : `${status}, npm error codes ${codes.join(", ")}`,
+  };
 }
 
 async function verifyRenderedPackageIdentity(
