@@ -53,8 +53,8 @@ const execFile = promisify(execFileCallback);
 const TEMPLATE_SOURCE_ENV = "NEW_CLI_TEMPLATE_SOURCE";
 
 // npm login and publish print one-time authentication links. Keep their output in memory, open
-// the links in the browser, and print only fixed status lines and npm error codes. npm runs with
-// --color=false, so whitespace ends each link.
+// the links in the browser, and print only fixed status lines and npm's error codes and
+// explanations with every URL removed. npm runs with --color=false, so whitespace ends each link.
 const NPM_AUTH_URL = /https:\/\/www\.npmjs\.com\/(?:auth|login)(?:\/|\?)\S+(?=\s)/g;
 const NPM_OUTPUT_LIMIT = 1024 * 1024;
 const NPM_TERMINAL_TIMEOUT_MS = 300_000;
@@ -96,6 +96,7 @@ type NpmPackagePlan = TemplateNpmConfig & {
 type NpmTerminalResult = {
   completed: boolean;
   detail: string;
+  reasons: string[];
 };
 
 type PackedNpmArchive = {
@@ -1183,7 +1184,9 @@ async function ensureNpmAuthenticated(cwd: string): Promise<void> {
   console.log("\n> Authenticate with npm");
   const result = await runNpmInTerminal(["login", "--auth-type=web"], cwd);
   if (!result.completed) {
-    throw new Error(`npm login did not complete (${result.detail}). Nothing was created.`);
+    throw new Error(
+      withNpmReasons(`npm login did not complete (${result.detail}). Nothing was created.`, result),
+    );
   }
 
   if ((await commandOutput("npm", ["whoami", "--logs-max=0"])) === undefined) {
@@ -1212,7 +1215,10 @@ async function publishInitialNpmPackage(targetDir: string, plan: NpmPackagePlan)
       }
       if (!result.completed) {
         throw new Error(
-          `npm publish did not complete (${result.detail}), and the registry does not show ${label}.`,
+          withNpmReasons(
+            `npm publish did not complete (${result.detail}), and the registry does not show ${label}.`,
+            result,
+          ),
         );
       }
       if (attempt >= NPM_REGISTRY_ATTEMPTS) {
@@ -1368,10 +1374,10 @@ async function runNpmInTerminal(args: string[], cwd: string): Promise<NpmTermina
   process.removeListener("SIGTERM", interrupt);
 
   if (stopReason !== undefined) {
-    return { completed: false, detail: stopReason };
+    return { completed: false, detail: stopReason, reasons: npmFailureReasons(output) };
   }
   if (exitCode === 0) {
-    return { completed: true, detail: "exit code 0" };
+    return { completed: true, detail: "exit code 0", reasons: [] };
   }
   const codes = [
     ...new Set([...output.matchAll(/npm error code ([A-Z0-9_]+)/g)].map((match) => match[1])),
@@ -1380,7 +1386,41 @@ async function runNpmInTerminal(args: string[], cwd: string): Promise<NpmTermina
   return {
     completed: false,
     detail: codes.length === 0 ? status : `${status}, npm error codes ${codes.join(", ")}`,
+    reasons: npmFailureReasons(output),
   };
+}
+
+// Extracts npm's error explanations without any URL, because npm's output contains one-time
+// authentication links. Terminal spinner sequences precede each log line.
+function npmFailureReasons(output: string): string[] {
+  const reasons = new Set<string>();
+  for (const line of output.split(/\r\n|\r|\n/)) {
+    const start = line.lastIndexOf("npm error ");
+    if (start === -1) {
+      continue;
+    }
+    const reason = line
+      .slice(start + "npm error ".length)
+      .replaceAll(/\p{Cc}/gu, "")
+      .replaceAll(/[a-z][a-z0-9+.-]*:\/\/\S+|\S*npmjs\.com\/\S*/gi, "<URL>")
+      .replaceAll(/npm_[A-Za-z0-9]{20,}/g, "<token>")
+      .trim()
+      .slice(0, 300);
+    if (
+      reason.length > 0 &&
+      !reason.startsWith("code ") &&
+      !reason.startsWith("Log files were not written")
+    ) {
+      reasons.add(reason);
+    }
+  }
+  return [...reasons].slice(0, 10);
+}
+
+function withNpmReasons(message: string, result: NpmTerminalResult): string {
+  return result.reasons.length === 0
+    ? message
+    : `${message}\nnpm reported:\n${result.reasons.map((reason) => `  ${reason}`).join("\n")}`;
 }
 
 async function verifyRenderedPackageIdentity(

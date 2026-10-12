@@ -14,8 +14,8 @@
 ### Fixed
 
 - Keep npm login and initial-publication output, including one-time authentication links, out of
-  the terminal. `new` opens the links in the browser, prints only status lines and npm error codes,
-  and verifies the published bytes and dist-tag against the packed archive. Initial publication now
+  the terminal. `new` opens the links in the browser, prints only status lines, npm error codes, and
+  npm's error explanations with every URL removed, and verifies the published bytes and dist-tag against the packed archive. Initial publication now
   requires a macOS terminal.
 - Pass the staged package archive as an absolute path so npm treats it as a local tarball.
 - Read the npm stage ID from the package-keyed JSON response.

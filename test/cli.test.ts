@@ -197,7 +197,7 @@ test("the registry confirms a publication whose npm client failed", async () => 
   }
 });
 
-test("a failed npm publication reports only npm error codes", async () => {
+test("a failed npm publication reports npm error codes and reasons without links", async () => {
   const root = await mkdtemp(join(tmpdir(), "new-cli-test-"));
   const fakeNpm = await createFakeNpm(root);
 
@@ -209,9 +209,17 @@ test("a failed npm publication reports only npm error codes", async () => {
       (error: unknown) => error,
     );
     const output = commandOutputText(failure);
-    assert.match(
+    assert.ok(
+      output.includes(
+        [
+          "npm publish did not complete (exit code 1, npm error codes E403), and the registry does not show rejected-package@0.0.1-alpha.0.",
+          "npm reported:",
+          "  403 403 Forbidden - PUT <URL> - Package name triggered spam detection",
+          "  Retry at <URL>",
+          "",
+        ].join("\n"),
+      ),
       output,
-      /npm publish did not complete \(exit code 1, npm error codes E403\), and the registry does not show rejected-package@0\.0\.1-alpha\.0\./,
     );
     assertNoAuthenticationLinks(output);
   } finally {
@@ -643,6 +651,7 @@ async function createFakeNpm(root: string): Promise<FakeNpm> {
       '  const mode = process.env.FAKE_NPM_PUBLISH ?? "success";',
       '  if (mode === "fail") {',
       '    console.error("npm error code E403");',
+      `    console.error(${JSON.stringify(`\u001b[1G\u001b[0Knpm error 403 403 Forbidden - PUT https://registry.npmjs.org/rejected-package - Package name triggered spam detection\r\nnpm error Retry at ${FAKE_PUBLISH_URL}\r\nnpm error Log files were not written due to the config logs-max=0`)});`,
       "    process.exit(1);",
       "  }",
       '  const contents = mode === "other-bytes" ? Buffer.from("other bytes") : archive();',

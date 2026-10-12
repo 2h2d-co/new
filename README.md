@@ -142,8 +142,8 @@ npm publish --tag alpha --access public --allow-directory=all
 
 npm login and publish run under macOS `script`, which gives npm a terminal. Their output stays in
 memory because it contains one-time authentication links. `new` opens each npm authentication link
-in the browser with `open` and prints only fixed status lines, exit codes, and npm error codes.
-Each command stops after five minutes.
+in the browser with `open` and prints only fixed status lines, exit codes, npm error codes, and npm's
+error explanations with every URL removed. Each command stops after five minutes.
 
 The registry decides the result, because an interrupted npm client can still have published. `new`
 checks the registry with `npm view` for up to five minutes. The published SHA-512 integrity and
