@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build npm package
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -132,6 +133,7 @@ jobs:
     name: Stage npm package
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: npm-publish
     permissions:
       attestations: write # Required to persist the package artifact attestation.
