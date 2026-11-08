@@ -9,7 +9,7 @@ hk = { version = "2.10.0", workflow = "release.yml", postinstall = "hk install -
 betterleaks = "1.9.0"
 cocogitto = "7.0.0"
 node = "22.23.4"
-npm = "11.21.0"
+npm = "11.21.2"
 jactionlint = "2.3.0"
 zizmor = "1.30.1"
 
